@@ -1,6 +1,39 @@
 use inline_xml::xml;
 use std::process::{Command, Stdio};
 
+static PLUGIN_DIRS: &[&str] = &[
+    "/usr/lib/renovatio/plugins",
+    "/usr/local/lib/renovatio/plugins",
+    "~/.local/lib/renovatio/plugins",
+];
+
+pub fn find_plugins() -> Vec<String> {
+    let mut plugins = Vec::<String>::new();
+
+    for dir in PLUGIN_DIRS {
+        let mut path = dir.to_string();
+
+        if path.starts_with("~") {
+            path = shellexpand::tilde(&path).to_string();
+        }
+
+        // Scan the files in each directory for .so files
+        if std::fs::exists(&path).unwrap_or(false) {
+            for entry in std::fs::read_dir(&path).unwrap() {
+                let entry = entry.unwrap();
+                if entry.file_type().unwrap().is_file()
+                    && entry.file_name().to_str().unwrap().ends_with(".so")
+                {
+                    let plugin = format!("{}/{}", path, entry.file_name().to_str().unwrap());
+
+                    plugins.push(plugin);
+                }
+            }
+        }
+    }
+    plugins
+}
+
 /// Installs our GSettings schema, if they're not already installed.
 pub fn install_gsettings_schema() {
     let xml = xml! {
@@ -10,6 +43,13 @@ pub fn install_gsettings_schema() {
                 <default>false</default>
                 <summary>A flag to enable automatic reboot after update</summary>
             </key>
+
+            <key name="plugins" type="as">
+              <default>{"[]"}</default>
+              <summary></summary>
+              <description></description>
+            </key>
+
             </schema>
         </schemalist>
     };

@@ -1,4 +1,6 @@
+use super::PluginMetadata;
 use crate::modals;
+
 use adw::prelude::*;
 use gio::ActionEntry;
 
@@ -10,6 +12,23 @@ pub fn set_about(app: &adw::Application, window: &adw::ApplicationWindow) {
             window,
             move |_app: &adw::Application, _action, _parameter| {
                 modals::about::show(&window);
+            }
+        ))
+        .build()]);
+}
+
+/// Set the preferences action
+pub fn set_preferences(
+    app: &adw::Application,
+    window: &adw::ApplicationWindow,
+    plugins: Vec<PluginMetadata>,
+) {
+    app.add_action_entries([ActionEntry::builder("preferences")
+        .activate(glib::clone!(
+            #[weak]
+            window,
+            move |_app: &adw::Application, _action, _parameter| {
+                modals::preferences::show(&window, plugins.clone());
             }
         ))
         .build()]);

@@ -1,0 +1,14 @@
+[package]
+name = "flatpak"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+renovatio = { path = "../.." }
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.145"
+adw = { version = "0.8.0", package = "libadwaita", features = ["v1_7"] }
+flume = "0.11.1"

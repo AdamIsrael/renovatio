@@ -1,0 +1,31 @@
+name := "renovatio"
+
+default:
+    @just --list
+
+
+build-debug:
+    cargo build
+
+build-release:
+    cargo build --release
+
+install-debug:
+    #!/bin/bash
+    set -eu
+    plugins=$(find target/debug -maxdepth 1 -name '*.so')
+    mkdir -p ~/.local/lib/{{ name }}/plugins/
+    for plugin in $plugins; do
+        echo "Installing $plugin to ~/.local/lib/{{ name }}/plugins/"
+        cp $plugin ~/.local/lib/{{ name }}/plugins/
+    done
+
+install-release:
+    #!/bin/bash
+    set -eu
+    plugins=$(find target/release -maxdepth 1 -name '*.so')
+    mkdir -p ~/.local/lib/{{ name }}/plugins/
+    for plugin in $plugins; do
+        echo "Installing $plugin to ~/.local/lib/{{ name }}/plugins/"
+        cp $plugin ~/.local/lib/{{ name }}/plugins/
+    done
