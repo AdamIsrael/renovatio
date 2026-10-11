@@ -111,108 +111,90 @@ fn build_ui(app: &adw::Application, plugins: Vec<PluginMetadata>) -> adw::Applic
     let apply_clone = apply_check_button.clone();
     let update_clone = update_button.clone();
 
-    // This is called each time GTK is idle (i.e., not processing events).
-    // It will run as often as possible but never blocks the main loop.
-    glib::idle_add_local(move || {
-        // Even if we don't have a progress update from a plugin,
-        // pulse the progress bar if we have a pulse_step defined.
-        if ppbar_clone.pulse_step() > 0.0 {
-            ppbar_clone.pulse();
-        }
+    // Handle events from the worker on the main thread. `recv_async` suspends
+    // this task until an event arrives, so nothing runs while the app is idle.
+    glib::spawn_future_local(async move {
+        let pulser = ui::Pulser::new(&ppbar_clone);
 
-        // Try to receive a message. `try_recv` is non‑blocking.
-        match rx.try_recv() {
-            Ok(RunEvent::Started { index, total, name }) => {
-                tpbar_clone.set_text(Some(&format!("Updating {name} ({index}/{total})...")));
-                tpbar_clone.set_fraction((index - 1) as f64 / total as f64);
+        while let Ok(event) = rx.recv_async().await {
+            match event {
+                RunEvent::Started { index, total, name } => {
+                    tpbar_clone.set_text(Some(&format!("Updating {name} ({index}/{total})...")));
+                    tpbar_clone.set_fraction((index - 1) as f64 / total as f64);
 
-                ppbar_clone.set_pulse_step(0.0);
-                ppbar_clone.set_fraction(0.0);
-                ppbar_clone.set_text(Some(""));
-                glib::ControlFlow::Continue
-            }
-            Ok(RunEvent::Progress(progress)) => {
-                // handle stdout/stderr
-                if let Some(stdout) = progress.stdout {
-                    println!("[{}]: {}", progress.name, stdout);
+                    pulser.stop();
+                    ppbar_clone.set_fraction(0.0);
+                    ppbar_clone.set_text(Some(""));
                 }
-                if let Some(stderr) = progress.stderr {
-                    println!("[{}]: {}", progress.name, stderr);
-                }
+                RunEvent::Progress(progress) => {
+                    // handle stdout/stderr
+                    if let Some(stdout) = progress.stdout {
+                        println!("[{}]: {}", progress.name, stdout);
+                    }
+                    if let Some(stderr) = progress.stderr {
+                        println!("[{}]: {}", progress.name, stderr);
+                    }
 
-                ppbar_clone.set_text(Some(&progress.status));
+                    ppbar_clone.set_text(Some(&progress.status));
 
-                if progress.pulse {
-                    ppbar_clone.set_pulse_step(0.25);
-                    ppbar_clone.pulse();
-                } else {
-                    ppbar_clone.set_pulse_step(0.0);
-                    ppbar_clone.set_fraction(progress.progress.min(100) as f64 / 100.0);
-                }
-
-                // TODO: Append stdout and stderr to a `TextView` in the UI
-                glib::ControlFlow::Continue
-            }
-            Ok(RunEvent::Finished {
-                index,
-                total,
-                name,
-                success,
-                error,
-            }) => {
-                ppbar_clone.set_pulse_step(0.0);
-                if success {
-                    println!("Update successful: {name}");
-                    ppbar_clone.set_fraction(1.0);
-                } else {
-                    let error = error.unwrap_or_else(|| "Update failed".to_string());
-                    println!("Update failed: {name}: {error}");
-                    ppbar_clone.set_text(Some(&format!("{name}: {error}")));
-                }
-                tpbar_clone.set_fraction(index as f64 / total as f64);
-                glib::ControlFlow::Continue
-            }
-            Ok(RunEvent::RunFinished { succeeded, total }) => {
-                apply_clone.set_sensitive(true);
-                update_clone.set_sensitive(true);
-                tpbar_clone.set_fraction(1.0);
-
-                if total == 0 {
-                    tpbar_clone.set_text(Some("No plugins enabled. See Preferences."));
-                    return glib::ControlFlow::Continue;
-                }
-
-                // Check to see if we need to reboot
-                let reboot = apply_clone.is_active();
-                let failed = total - succeeded;
-
-                let msg = format!(
-                    "Updates complete{}! {}",
-                    if failed > 0 {
-                        format!(" ({failed} of {total} failed)")
+                    if progress.pulse {
+                        pulser.start();
                     } else {
-                        String::new()
-                    },
-                    if reboot { "Rebooting..." } else { "" }
-                );
+                        pulser.stop();
+                        ppbar_clone.set_fraction(progress.progress.min(100) as f64 / 100.0);
+                    }
 
-                tpbar_clone.set_text(Some(&msg));
-
-                if reboot && utils::check_reboot_needed() {
-                    std::thread::sleep(std::time::Duration::from_secs(3));
-                    utils::reboot_system();
+                    // TODO: Append stdout and stderr to a `TextView` in the UI
                 }
+                RunEvent::Finished {
+                    index,
+                    total,
+                    name,
+                    success,
+                    error,
+                } => {
+                    pulser.stop();
+                    if success {
+                        println!("Update successful: {name}");
+                        ppbar_clone.set_fraction(1.0);
+                    } else {
+                        let error = error.unwrap_or_else(|| "Update failed".to_string());
+                        println!("Update failed: {name}: {error}");
+                        ppbar_clone.set_text(Some(&format!("{name}: {error}")));
+                    }
+                    tpbar_clone.set_fraction(index as f64 / total as f64);
+                }
+                RunEvent::RunFinished { succeeded, total } => {
+                    apply_clone.set_sensitive(true);
+                    update_clone.set_sensitive(true);
+                    tpbar_clone.set_fraction(1.0);
 
-                glib::ControlFlow::Continue
-            }
-            Err(flume::TryRecvError::Empty) => {
-                // No messages, but there are sender(s) alive – keep the idle handler alive
-                glib::ControlFlow::Continue
-            }
-            Err(flume::TryRecvError::Disconnected) => {
-                // All senders dropped – no more work will come.
-                println!("All senders disconnected. Stopping idle callback.");
-                glib::ControlFlow::Break
+                    if total == 0 {
+                        tpbar_clone.set_text(Some("No plugins enabled. See Preferences."));
+                        continue;
+                    }
+
+                    // Check to see if we need to reboot
+                    let reboot = apply_clone.is_active();
+                    let failed = total - succeeded;
+
+                    let msg = format!(
+                        "Updates complete{}! {}",
+                        if failed > 0 {
+                            format!(" ({failed} of {total} failed)")
+                        } else {
+                            String::new()
+                        },
+                        if reboot { "Rebooting..." } else { "" }
+                    );
+
+                    tpbar_clone.set_text(Some(&msg));
+
+                    if reboot && utils::check_reboot_needed() {
+                        std::thread::sleep(std::time::Duration::from_secs(3));
+                        utils::reboot_system();
+                    }
+                }
             }
         }
     });
