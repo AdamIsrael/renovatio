@@ -21,7 +21,8 @@ fn main() -> glib::ExitCode {
         .application_id(config::APP_ID)
         .build();
 
-    // Load plugins at startup for their metadata and conflicts (shown in Preferences)
+    // Load plugins once, at startup: their metadata and conflicts are shown in
+    // Preferences, and every run reuses them.
     let plugins = runner::discover(&utils::find_plugins(), runner::load_plugin);
 
     application.connect_activate(move |app| {
@@ -46,6 +47,7 @@ fn main() -> glib::ExitCode {
 fn build_ui(app: &adw::Application, plugins: Vec<PluginEntry>) -> adw::ApplicationWindow {
     // Create a channel that will be used to send messages from worker threads
     let (tx, rx): (flume::Sender<RunEvent>, Receiver<RunEvent>) = unbounded();
+    let loaded = runner::Plugins::new(&plugins);
 
     let header_bar = ui::get_header_bar();
     let update_button = ui::get_update_button();
@@ -73,8 +75,13 @@ fn build_ui(app: &adw::Application, plugins: Vec<PluginEntry>) -> adw::Applicati
         let paths = settings.get::<Vec<String>>("plugins");
 
         let tx_worker = tx.clone();
+        let loaded = loaded.clone();
         thread::spawn(move || {
-            runner::run(&paths, runner::load_plugin, &tx_worker);
+            runner::run(
+                &paths,
+                |path| loaded.get(path, runner::load_plugin),
+                &tx_worker,
+            );
         });
     });
 

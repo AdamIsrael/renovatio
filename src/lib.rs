@@ -67,7 +67,7 @@ pub struct PluginMetadata {
 
 impl PluginMetadata {
     /// Create a new plugin metadata
-    pub fn new(plugin: Box<dyn Plugin>) -> Self {
+    pub fn new(plugin: &dyn Plugin) -> Self {
         Self {
             name: plugin.name().to_string(),
             version: plugin.version().to_string(),
@@ -78,7 +78,10 @@ impl PluginMetadata {
 }
 
 /// Plugin is a trait that defines the interface for a plugin.
-pub trait Plugin {
+///
+/// The host loads each plugin once, at startup, and runs `update` on a worker
+/// thread, so plugins must be `Send + Sync`.
+pub trait Plugin: Send + Sync {
     /// The name of the plugin
     fn name(&self) -> &str;
 
