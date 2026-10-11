@@ -13,8 +13,7 @@ impl Plugin for RpmOstree {
     }
 
     fn version(&self) -> &str {
-        // TODO: implement versioning
-        "0.1.0"
+        env!("CARGO_PKG_VERSION")
     }
 
     /// uupd and bootc also update the OS.

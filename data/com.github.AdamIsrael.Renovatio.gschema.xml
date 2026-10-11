@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+  <schema id="com.github.AdamIsrael.Renovatio" path="/com/github/AdamIsrael/Renovatio/">
+    <key name="auto-reboot" type="b">
+      <default>false</default>
+      <summary>Reboot automatically after updates</summary>
+      <description>Reboot when an update has staged changes that need one.</description>
+    </key>
+
+    <key name="plugins" type="as">
+      <default>[]</default>
+      <summary>Enabled plugins</summary>
+      <description>Paths of the plugin libraries to run, in order.</description>
+    </key>
+  </schema>
+</schemalist>

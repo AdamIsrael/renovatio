@@ -528,26 +528,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "inline-xml"
-version = "0.3.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0ca721566fdaca8e86b115be1e04c3034d64ce5803dc6ca1a1e3a8552b1fed48"
-dependencies = [
- "inline-xml-macros",
-]
-
-[[package]]
-name = "inline-xml-macros"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "73bbf4a75da122224e1d32d19dad9473cbbf30a72e521bf71154cb840db1b533"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "itoa"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -749,7 +729,6 @@ dependencies = [
  "glib",
  "glib-build-tools",
  "gtk4",
- "inline-xml",
  "libadwaita",
  "libloading",
  "serde",
@@ -883,17 +862,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3763264f6b73151db08c50ff20d7d8a0b8796e021cdea7ceedad07b80155fa0e"
 dependencies = [
  "lock_api",
-]
-
-[[package]]
-name = "syn"
-version = "1.0.109"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "72b64191b275b66ffe2469e8af2c1cfe3bafa67b529ead792a6d0160888b4237"
-dependencies = [
- "proc-macro2",
- "quote",
- "unicode-ident",
 ]
 
 [[package]]
