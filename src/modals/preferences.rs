@@ -85,7 +85,7 @@ pub fn show(parent: &impl IsA<gtk::Widget>, plugins: Vec<PluginEntry>) {
                             Some(other_row) => other_row.set_active(false),
                             None => {
                                 let mut plugins = settings.get::<Vec<String>>("plugins");
-                                plugins.retain(|path| path != other_path);
+                                disable(&mut plugins, other_path);
                                 let _ = settings.set("plugins", &plugins);
                             }
                         }
@@ -100,11 +100,9 @@ pub fn show(parent: &impl IsA<gtk::Widget>, plugins: Vec<PluginEntry>) {
 
                 // append or remove the current plugin
                 if state.is_active() {
-                    // append the plugin to the list
-                    plugins.push(plugin_path);
+                    enable(&mut plugins, &plugin_path);
                 } else {
-                    // remove the plugin from the list
-                    plugins.retain(|path| !path.contains(&plugin_path));
+                    disable(&mut plugins, &plugin_path);
                 }
                 println!("Saving plugins: {:?}", plugins);
                 // save the changes to gsettings
@@ -118,4 +116,49 @@ pub fn show(parent: &impl IsA<gtk::Widget>, plugins: Vec<PluginEntry>) {
     dialog.add(&page1);
 
     dialog.present(Some(parent));
+}
+
+/// Add `path` to the enabled plugins, unless it's already there.
+/// Plugins run in the order they were enabled.
+fn enable(plugins: &mut Vec<String>, path: &str) {
+    if !plugins.iter().any(|p| p == path) {
+        plugins.push(path.to_string());
+    }
+}
+
+/// Remove every entry for exactly `path` from the enabled plugins.
+fn disable(plugins: &mut Vec<String>, path: &str) {
+    plugins.retain(|p| p != path);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn list(paths: &[&str]) -> Vec<String> {
+        paths.iter().map(|p| p.to_string()).collect()
+    }
+
+    #[test]
+    fn enable_appends_once() {
+        let mut plugins = list(&["/p/libbrew.so"]);
+        enable(&mut plugins, "/p/libflatpak.so");
+        enable(&mut plugins, "/p/libflatpak.so");
+        assert_eq!(plugins, list(&["/p/libbrew.so", "/p/libflatpak.so"]));
+    }
+
+    #[test]
+    fn disable_removes_only_the_exact_path() {
+        // The old substring match also removed the second entry.
+        let mut plugins = list(&["/p/libuupd.so", "/home/u/p/libuupd.so"]);
+        disable(&mut plugins, "/p/libuupd.so");
+        assert_eq!(plugins, list(&["/home/u/p/libuupd.so"]));
+    }
+
+    #[test]
+    fn disable_removes_duplicates_left_by_older_versions() {
+        let mut plugins = list(&["/p/libbrew.so", "/p/libflatpak.so", "/p/libbrew.so"]);
+        disable(&mut plugins, "/p/libbrew.so");
+        assert_eq!(plugins, list(&["/p/libflatpak.so"]));
+    }
 }
