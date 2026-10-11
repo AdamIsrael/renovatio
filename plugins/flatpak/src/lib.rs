@@ -90,10 +90,7 @@ impl Plugin for Flatpak {
 }
 
 // Export a function to create an instance of the plugin
-#[unsafe(no_mangle)]
-pub fn create_plugin() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(Flatpak))
-}
+renovatio::export_plugin!(Flatpak);
 
 fn list_updates(system: bool) -> Vec<String> {
     let mut updates = Vec::new();

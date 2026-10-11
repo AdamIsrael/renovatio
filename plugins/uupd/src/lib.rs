@@ -130,7 +130,4 @@ impl Plugin for Uupd {
 }
 
 // Export a function to create an instance of the plugin
-#[unsafe(no_mangle)]
-pub fn create_plugin() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(Uupd))
-}
+renovatio::export_plugin!(Uupd);

@@ -1,0 +1,7 @@
+{
+  "database": "dolt",
+  "backend": "dolt",
+  "dolt_mode": "embedded",
+  "dolt_database": "renovatio",
+  "project_id": "c3e7e333-41c8-44c2-a72c-ba681e89b4d7"
+}

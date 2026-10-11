@@ -40,4 +40,4 @@ target/release/renovatio
 - Investigate feasibility of adding a changelog display feature.
 - Add support for `gettext`
 - Re-add terminal output for stdout/stderr.
-- Build flatpak
+- Build flatpak(s)

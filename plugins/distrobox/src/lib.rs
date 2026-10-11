@@ -73,10 +73,7 @@ impl Plugin for Distrobox {
 }
 
 // Export a function to create an instance of the plugin
-#[unsafe(no_mangle)]
-pub fn create_plugin() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(Distrobox))
-}
+renovatio::export_plugin!(Distrobox);
 
 pub fn list() -> Vec<String> {
     let mut boxes = Vec::new();

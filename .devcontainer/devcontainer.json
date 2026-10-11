@@ -4,6 +4,10 @@
         "dockerfile": "Dockerfile",
         "context": "."
     },
+    "features": {
+        "ghcr.io/devcontainers/features/node:1": {},
+        "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
+    },
     "customizations": {
         "vscode": {
             "extensions": ["rust-lang.rust-analyzer"]
@@ -13,7 +17,7 @@
     "remoteUser": "vscode",
     "updateRemoteUserUID": true, // Automatically updates UID/GID in container
 
-    "workspaceMount": "",
+    "workspaceMount": "source=${localWorkspaceFolder},target=/workspace,type=bind",
     "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}",
     // "workspaceFolder": "/workspaces/hello-world-gtk",
     "runArgs": [

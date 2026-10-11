@@ -190,10 +190,7 @@ impl Plugin for Brew {
 }
 
 // Export a function to create an instance of the plugin
-#[unsafe(no_mangle)]
-pub fn create_plugin() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(Brew))
-}
+renovatio::export_plugin!(Brew);
 
 fn get_outdated() -> (String, String, i32) {
     let cmd = "brew outdated --json";
