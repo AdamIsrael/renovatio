@@ -79,10 +79,7 @@ impl Plugin for RpmOstree {
 }
 
 // Export a function to create an instance of the plugin
-#[unsafe(no_mangle)]
-pub fn create_plugin() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(RpmOstree))
-}
+renovatio::export_plugin!(RpmOstree);
 
 fn download() -> (String, String, i32) {
     // run `rpm-ostree upgrade --download-only`

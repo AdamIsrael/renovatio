@@ -238,10 +238,7 @@ impl Plugin for Bootc {
 }
 
 // Export a function to create an instance of the plugin
-#[unsafe(no_mangle)]
-pub fn create_plugin() -> *mut dyn Plugin {
-    Box::into_raw(Box::new(Bootc))
-}
+renovatio::export_plugin!(Bootc);
 
 fn get_status() -> Option<Root> {
     // execute `bootc status --json`

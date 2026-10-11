@@ -10,7 +10,13 @@ Renovatio is a prototype GTK4/libadwaita (Rust, edition 2024) desktop app that r
 
 The repo contains **two separate Cargo workspaces**: the app at the root and the plugins under `plugins/` (its own `Cargo.toml`, `Cargo.lock`, and `target/`). Run plugin commands from inside `plugins/`.
 
-Building requires GTK4 + libadwaita dev libraries (`libgtk-4-dev libadwaita-1-dev`); the devcontainer (`devpod up .`) or the root `Dockerfile` provides them.
+Building requires GTK4 + libadwaita dev libraries (`libgtk-4-dev libadwaita-1-dev`), which are **not** available on the host. The host is read-only outside select mounts (e.g. `/tmp`, `/var/home`), so don't try to install them there. All cargo commands run inside the devpod workspace (devcontainer spec, `.devcontainer/`), where the repo is mounted at `/workspaces/renovatio`:
+
+```bash
+devpod status renovatio                 # check whether the workspace is running
+devpod up .                             # create/start it (from the repo root)
+devpod ssh renovatio --workdir /workspaces/renovatio --command "cargo clippy"
+```
 
 ```bash
 # App
@@ -35,15 +41,14 @@ A Meson build (`meson.build`, `src/meson.build`, root `justfile`: `just setup-me
 **Plugin ABI.** `src/lib.rs` is the `renovatio` library crate shared by the app and all plugins. It defines the `Plugin` trait, `PluginProgress` (status messages sent from plugin to UI), `PluginMetadata`, and the `execute()` shell helper returning `(stdout, stderr, exit_code)`. Each plugin in `plugins/<name>/` is a `cdylib` depending on `renovatio = { path = "../.." }` and must export:
 
 ```rust
-#[unsafe(no_mangle)]
-pub fn create_plugin() -> *mut dyn Plugin { Box::into_raw(Box::new(MyPlugin)) }
+renovatio::export_plugin!(MyPlugin);   // generates #[no_mangle] create_plugin()
 ```
 
-The host loads this via `libloading` and reclaims it with `Box::from_raw`. This is a Rust-ABI (not C-ABI) boundary, so the app and plugins must be built with the same compiler and the same `renovatio` lib version — changing `Plugin`/`PluginProgress` requires rebuilding and reinstalling every plugin.
+The host loads this via `libloading` (`runner::load_plugin`) and reclaims it with `Box::from_raw`. This is a Rust-ABI (not C-ABI) boundary, so the app and plugins must be built with the same compiler and the same `renovatio` lib version — changing `Plugin`/`PluginProgress` requires rebuilding and reinstalling every plugin. Each `.so` links its own std, so **the host cannot catch a plugin panic** (the process aborts with "Rust cannot catch foreign exceptions"). `export_plugin!` wraps the plugin in `PanicGuard`, whose `catch_unwind` is compiled into the plugin and turns a panic into a failed update — always export via the macro.
 
 **Plugin discovery and enablement.** `utils::find_plugins()` scans `/usr/lib/renovatio/plugins`, `/usr/local/lib/renovatio/plugins`, and `~/.local/lib/renovatio/plugins` for `.so` files at startup (for metadata shown in Preferences). Which plugins actually run is stored as a list of `.so` paths in the GSettings key `plugins` (schema `com.github.AdamIsrael.Renovatio`), toggled in `src/modals/preferences.rs`. The schema XML is generated inline in `utils::install_gsettings_schema()` and written/compiled into `~/.local/share/glib-2.0/schemas` on first launch only — if you add a key, existing installs won't pick it up until that file is deleted.
 
-**Update flow (`src/main.rs`).** Clicking Update spawns a worker thread that re-loads each enabled plugin library and calls its blocking `update(tx)` sequentially. Plugins send `PluginProgress` over a `flume` unbounded channel. The GTK main thread polls the receiver in a `glib::idle_add_local` callback, updating the plugin and total progress bars; `progress == 100` marks a plugin as finished and advances the plugin index, so every plugin must eventually send a 100% message (on success) or the UI never completes. `pulse: true` switches the plugin bar to indeterminate mode. After the last plugin, if the "apply" check is set and `rpm-ostree status --pending-exit-77` reports a pending deployment, the app runs `systemctl reboot`.
+**Update flow (`src/main.rs`, `src/runner.rs`).** Clicking Update snapshots the GSettings plugin list and spawns a worker thread running `runner::run`, which loads each plugin and calls its blocking `update(tx)` sequentially. Plugins send `PluginProgress` on a per-plugin `flume` channel; the runner forwards these as `RunEvent::Progress` and emits exactly one `Started` and one `Finished { success, error }` per configured path (including paths that fail to load), then a final `RunFinished`. `Finished` is sent only after `update()` returns and its progress is drained, so plugin completion never depends on `progress` values. The GTK main thread polls `RunEvent`s in a `glib::idle_add_local` callback; `pulse: true` switches the plugin bar to indeterminate mode. Controls are re-enabled on `RunFinished`; then, if the "apply" check is set and `rpm-ostree status --pending-exit-77` reports a pending deployment, the app runs `systemctl reboot`. `runner` tests use in-process fake plugins via `LoadedPlugin::from_plugin`.
 
 **UI.** Widgets are built imperatively in `src/ui.rs` (no Blueprint/`.ui` files, no gresources despite the `glib-build-tools` build-dependency); app menu actions (about/preferences/quit) are wired in `src/actions.rs`; dialogs live in `src/modals/`.
 

@@ -1,3 +1,4 @@
+use std::panic::{self, AssertUnwindSafe};
 use std::process::Command;
 
 #[derive(Clone, Debug)]
@@ -87,6 +88,68 @@ pub trait Plugin {
     extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool;
 }
 
+/// Wraps a plugin so that a panic in `update` is reported as a failed update.
+///
+/// Each plugin library links its own copy of std, so the host cannot catch a
+/// plugin's panic (the process aborts with "Rust cannot catch foreign
+/// exceptions"). This wrapper is monomorphized inside the plugin crate, so
+/// its `catch_unwind` runs on the plugin's side of the boundary. Use it via
+/// [`export_plugin!`].
+pub struct PanicGuard<P: Plugin>(pub P);
+
+impl<P: Plugin> Plugin for PanicGuard<P> {
+    fn name(&self) -> &str {
+        self.0.name()
+    }
+
+    fn description(&self) -> &str {
+        self.0.description()
+    }
+
+    fn version(&self) -> &str {
+        self.0.version()
+    }
+
+    fn conflicts(&self, plugin_name: &str) -> bool {
+        self.0.conflicts(plugin_name)
+    }
+
+    extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool {
+        let guard_tx = tx.clone();
+        match panic::catch_unwind(AssertUnwindSafe(|| self.0.update(tx))) {
+            Ok(success) => success,
+            Err(payload) => {
+                let message = payload
+                    .downcast_ref::<&str>()
+                    .map(|s| s.to_string())
+                    .or_else(|| payload.downcast_ref::<String>().cloned())
+                    .unwrap_or_else(|| "unknown panic".to_string());
+
+                let mut progress = PluginProgress::new(self.name());
+                progress.status = format!("{} crashed: {}", self.name(), message);
+                progress.stderr = Some(message);
+                let _ = guard_tx.send(progress);
+                false
+            }
+        }
+    }
+}
+
+/// Export `create_plugin` for a plugin, wrapped in a [`PanicGuard`].
+///
+/// ```ignore
+/// renovatio::export_plugin!(Flatpak);
+/// ```
+#[macro_export]
+macro_rules! export_plugin {
+    ($plugin:expr) => {
+        #[unsafe(no_mangle)]
+        pub fn create_plugin() -> *mut dyn $crate::Plugin {
+            ::std::boxed::Box::into_raw(::std::boxed::Box::new($crate::PanicGuard($plugin)))
+        }
+    };
+}
+
 /// Execute a command and return it's stdout, stderr, and success/failure
 pub fn execute(command: &str) -> (String, String, i32) {
     let mut stdout = String::new();
@@ -110,4 +173,39 @@ pub fn execute(command: &str) -> (String, String, i32) {
     }
 
     (stdout, stderr, rc)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Panics;
+
+    impl Plugin for Panics {
+        fn name(&self) -> &str {
+            "panics"
+        }
+        fn description(&self) -> &str {
+            ""
+        }
+        fn version(&self) -> &str {
+            "0.0.0"
+        }
+        fn conflicts(&self, _plugin_name: &str) -> bool {
+            false
+        }
+        extern "Rust" fn update(&self, _tx: flume::Sender<PluginProgress>) -> bool {
+            panic!("boom");
+        }
+    }
+
+    #[test]
+    fn panic_guard_reports_panic_as_failure() {
+        let (tx, rx) = flume::unbounded();
+        assert!(!PanicGuard(Panics).update(tx));
+
+        let progress = rx.recv().unwrap();
+        assert_eq!(progress.status, "panics crashed: boom");
+        assert_eq!(progress.stderr.as_deref(), Some("boom"));
+    }
 }
