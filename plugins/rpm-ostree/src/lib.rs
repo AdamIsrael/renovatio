@@ -1,4 +1,4 @@
-use renovatio::{Plugin, PluginProgress, execute};
+use renovatio::{Plugin, PluginProgress, execute_args};
 
 // Implementation of rpm-ostree
 pub struct RpmOstree;
@@ -83,10 +83,10 @@ renovatio::export_plugin!(RpmOstree);
 
 fn download() -> (String, String, i32) {
     // run `rpm-ostree upgrade --download-only`
-    execute("rpm-ostree upgrade --download-only")
+    execute_args("rpm-ostree", &["upgrade", "--download-only"])
 }
 
 fn upgrade() -> (String, String, i32) {
     // run `rpm-ostree upgrade`
-    execute("rpm-ostree upgrade")
+    execute_args("rpm-ostree", &["upgrade"])
 }

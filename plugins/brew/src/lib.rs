@@ -1,4 +1,4 @@
-use renovatio::{Plugin, PluginProgress, execute};
+use renovatio::{Plugin, PluginProgress, execute_args};
 
 use serde::{Deserialize, Serialize};
 
@@ -191,21 +191,20 @@ impl Plugin for Brew {
 renovatio::export_plugin!(Brew);
 
 fn get_outdated() -> (String, String, i32) {
-    let cmd = "brew outdated --json";
-    execute(cmd)
+    execute_args("brew", &["outdated", "--json"])
 }
 
 fn update() -> (String, String, i32) {
     // run a `brew update`
-    execute("brew update")
+    execute_args("brew", &["update"])
 }
 
 fn upgrade_formulae(formula: &str) -> (String, String, i32) {
     // run a `brew upgrade <formula> --dry-run`
-    execute(&format!("brew upgrade {}", formula))
+    execute_args("brew", &["upgrade", formula])
 }
 
 fn upgrade_cask(cask: &str) -> (String, String, i32) {
     // run a `brew upgrade --cask <formula> --dry-run`
-    execute(&format!("brew upgrade --cask {}", cask))
+    execute_args("brew", &["upgrade", "--cask", cask])
 }
