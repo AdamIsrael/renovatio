@@ -164,7 +164,11 @@ fn build_ui(app: &adw::Application, plugins: Vec<PluginMetadata>) -> adw::Applic
                     }
                     tpbar_clone.set_fraction(index as f64 / total as f64);
                 }
-                RunEvent::RunFinished { succeeded, total } => {
+                RunEvent::RunFinished {
+                    succeeded,
+                    total,
+                    reboot_required,
+                } => {
                     tpbar_clone.set_fraction(1.0);
 
                     if total == 0 {
@@ -181,12 +185,16 @@ fn build_ui(app: &adw::Application, plugins: Vec<PluginMetadata>) -> adw::Applic
                         "Updates complete!".to_string()
                     };
 
-                    // Check to see if we need to reboot. rpm-ostree can be slow,
+                    // A plugin may have reported that a reboot is needed. Not all
+                    // do (rpm-ostree, uupd), so with auto-reboot on, fall back to
+                    // checking for a staged deployment. rpm-ostree can be slow,
                     // so run it off the main thread.
-                    let reboot = apply_clone.is_active()
-                        && gio::spawn_blocking(utils::check_reboot_needed)
-                            .await
-                            .unwrap_or(false);
+                    let auto_reboot = apply_clone.is_active();
+                    let reboot = auto_reboot
+                        && (reboot_required
+                            || gio::spawn_blocking(utils::check_reboot_needed)
+                                .await
+                                .unwrap_or(false));
 
                     if reboot {
                         // Leave the controls disabled: an update started now
@@ -197,6 +205,8 @@ fn build_ui(app: &adw::Application, plugins: Vec<PluginMetadata>) -> adw::Applic
                             continue;
                         }
                         tpbar_clone.set_text(Some(&format!("{summary} Reboot failed.")));
+                    } else if reboot_required && !auto_reboot {
+                        tpbar_clone.set_text(Some(&format!("{summary} Reboot to finish.")));
                     } else {
                         tpbar_clone.set_text(Some(&summary));
                     }

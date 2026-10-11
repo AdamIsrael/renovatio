@@ -31,8 +31,13 @@ pub enum RunEvent {
         success: bool,
         error: Option<String>,
     },
-    /// Every plugin has been processed.
-    RunFinished { succeeded: usize, total: usize },
+    /// Every plugin has been processed. `reboot_required` is true if any
+    /// plugin reported that a reboot is needed to apply its updates.
+    RunFinished {
+        succeeded: usize,
+        total: usize,
+        reboot_required: bool,
+    },
 }
 
 /// A plugin together with the library that provides its code.
@@ -107,6 +112,7 @@ where
 {
     let total = paths.len();
     let mut succeeded = 0;
+    let mut reboot_required = false;
 
     for (i, path) in paths.iter().enumerate() {
         let index = i + 1;
@@ -121,7 +127,8 @@ where
                 });
                 println!("Running update for Plugin: {name}");
 
-                let success = run_plugin(loaded.plugin.as_ref(), tx);
+                let (success, reboot) = run_plugin(loaded.plugin.as_ref(), tx);
+                reboot_required |= reboot;
                 let error = (!success).then(|| "Update failed".to_string());
                 (name, success, error)
             }
@@ -149,27 +156,37 @@ where
         });
     }
 
-    let _ = tx.send(RunEvent::RunFinished { succeeded, total });
+    let _ = tx.send(RunEvent::RunFinished {
+        succeeded,
+        total,
+        reboot_required,
+    });
 }
 
 /// Run a single plugin's blocking update, forwarding its progress to `tx`.
 ///
 /// Returns once the plugin has returned and all of its progress messages have
 /// been forwarded, so `Finished` is always sent after the last `Progress`.
-fn run_plugin(plugin: &dyn Plugin, tx: &flume::Sender<RunEvent>) -> bool {
+/// Returns whether the update succeeded, and whether any progress message
+/// reported `reboot_required`.
+fn run_plugin(plugin: &dyn Plugin, tx: &flume::Sender<RunEvent>) -> (bool, bool) {
     let (progress_tx, progress_rx) = flume::unbounded::<PluginProgress>();
 
     thread::scope(|scope| {
-        scope.spawn(|| {
+        let forwarder = scope.spawn(|| {
+            let mut reboot_required = false;
             // Ends once the plugin drops every clone of its sender.
             for progress in progress_rx.iter() {
+                reboot_required |= progress.reboot_required;
                 if tx.send(RunEvent::Progress(progress)).is_err() {
                     break;
                 }
             }
+            reboot_required
         });
 
-        plugin.update(progress_tx)
+        let success = plugin.update(progress_tx);
+        (success, forwarder.join().unwrap_or(false))
     })
 }
 
@@ -191,6 +208,7 @@ mod tests {
         name: &'static str,
         steps: Vec<u32>,
         result: bool,
+        reboot: bool,
     }
 
     impl Plugin for Fake {
@@ -210,6 +228,7 @@ mod tests {
             for step in &self.steps {
                 let mut progress = PluginProgress::new(self.name);
                 progress.progress = *step;
+                progress.reboot_required = self.reboot;
                 let _ = tx.send(progress);
             }
             self.result
@@ -221,6 +240,7 @@ mod tests {
             name,
             steps: steps.to_vec(),
             result,
+            reboot: false,
         }
     }
 
@@ -288,7 +308,8 @@ mod tests {
             events.last(),
             Some(RunEvent::RunFinished {
                 succeeded: 1,
-                total: 2
+                total: 2,
+                ..
             })
         ));
     }
@@ -310,7 +331,8 @@ mod tests {
             events.last(),
             Some(RunEvent::RunFinished {
                 succeeded: 1,
-                total: 2
+                total: 2,
+                ..
             })
         ));
     }
@@ -337,7 +359,8 @@ mod tests {
             events.as_slice(),
             [RunEvent::RunFinished {
                 succeeded: 0,
-                total: 0
+                total: 0,
+                reboot_required: false
             }]
         ));
     }
@@ -358,6 +381,36 @@ mod tests {
     fn check_abi_rejects_plugin_without_fingerprint() {
         let error = check_abi("p.so", None, c"abi 1").unwrap_err();
         assert!(error.contains("older version of renovatio"));
+    }
+
+    #[test]
+    fn reboot_required_is_reported_if_any_plugin_needs_it() {
+        let events = run_fakes(&["os", "apps"], |path| match path {
+            "os" => Some(Fake {
+                reboot: true,
+                ..fake("os", &[100], true)
+            }),
+            _ => Some(fake("apps", &[100], true)),
+        });
+        assert!(matches!(
+            events.last(),
+            Some(RunEvent::RunFinished {
+                reboot_required: true,
+                ..
+            })
+        ));
+    }
+
+    #[test]
+    fn reboot_not_required_by_default() {
+        let events = run_fakes(&["apps"], |_| Some(fake("apps", &[100], true)));
+        assert!(matches!(
+            events.last(),
+            Some(RunEvent::RunFinished {
+                reboot_required: false,
+                ..
+            })
+        ));
     }
 
     #[test]
