@@ -76,22 +76,62 @@ impl Plugin for Distrobox {
 renovatio::export_plugin!(Distrobox);
 
 pub fn list() -> Vec<String> {
-    let mut boxes = Vec::new();
     let (stdout, _stderr, success) = execute("distrobox list --no-color");
     if success != 0 {
-        return boxes;
+        return Vec::new();
     }
+    parse_list(&stdout)
+}
 
-    for line in stdout.lines().skip(1) {
-        let cols = line
-            .split('|')
-            .map(|s| s.trim().to_string())
-            .collect::<Vec<String>>();
-        boxes.push(cols[1].to_string());
-    }
-    boxes
+/// Parse the container names out of `distrobox list --no-color`:
+///
+/// ```text
+/// ID           | NAME      | STATUS        | IMAGE
+/// 1a2b3c4d5e6f | fedora    | Up 2 hours    | registry.fedoraproject.org/fedora-toolbox:44
+/// ```
+///
+/// Skips the header and any line without a NAME column (blank lines, warnings).
+fn parse_list(output: &str) -> Vec<String> {
+    output
+        .lines()
+        .filter_map(|line| line.split('|').nth(1).map(str::trim))
+        .filter(|name| !name.is_empty() && *name != "NAME")
+        .map(str::to_string)
+        .collect()
 }
 
 pub fn upgrade(name: &str) -> (String, String, i32) {
     execute(format!("distrobox upgrade {}", name).as_str())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_list_returns_container_names() {
+        let output = "ID           | NAME      | STATUS        | IMAGE
+1a2b3c4d5e6f | fedora    | Up 2 hours    | registry.fedoraproject.org/fedora-toolbox:44
+6f5e4d3c2b1a | ubuntu    | Exited (0)    | quay.io/toolbx/ubuntu-toolbox:24.04
+";
+        assert_eq!(parse_list(output), vec!["fedora", "ubuntu"]);
+    }
+
+    #[test]
+    fn parse_list_skips_lines_without_a_name_column() {
+        // Each of these used to panic on cols[1].
+        let output = "ID           | NAME      | STATUS        | IMAGE
+
+Warning: something unexpected
+1a2b3c4d5e6f | fedora    | Up 2 hours    | img
+abc |  | x | y
+";
+        assert_eq!(parse_list(output), vec!["fedora"]);
+    }
+
+    #[test]
+    fn parse_list_handles_no_containers() {
+        assert!(parse_list("").is_empty());
+        assert!(parse_list("ID | NAME | STATUS | IMAGE\n").is_empty());
+    }
 }
