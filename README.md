@@ -21,12 +21,11 @@ git clone https://github.com/adamisrael/renovatio.git
 devpod up .
 ssh renovatio.devpod
 
-# Build the application
-cargo build --release
+# Build the application and the plugins
+cargo build --workspace --release
 
-# Build and install the plugins
+# Install the plugins
 cd plugins
-cargo build --release
 just install-release
 
 # Run the application

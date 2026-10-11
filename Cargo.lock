@@ -15,6 +15,25 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b588b76d00fde79687d7646a9b5bdf3cc0f655e0bbd080335a95d7e96f3587da"
 
 [[package]]
+name = "bootc"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "renovatio",
+]
+
+[[package]]
+name = "brew"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "libadwaita",
+ "renovatio",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -81,6 +100,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "distrobox"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "libadwaita",
+ "renovatio",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -94,6 +122,17 @@ checksum = "38e2275cc4e4fc009b0669731a1e5ab7ebf11f469eaede2bab9309a5b4d6057f"
 dependencies = [
  "memoffset",
  "rustc_version",
+]
+
+[[package]]
+name = "flatpak"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "libadwaita",
+ "renovatio",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -719,12 +758,31 @@ dependencies = [
 ]
 
 [[package]]
+name = "rpm-ostree"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "libadwaita",
+ "renovatio",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "rustc_version"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cfcb3a22ef46e85b45de6ee7e79d063319ebb6594faafcf1c225ea92ab6e9b92"
 dependencies = [
  "semver",
+]
+
+[[package]]
+name = "rustup"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "renovatio",
 ]
 
 [[package]]
@@ -880,6 +938,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "adb6935a6f5c20170eeceb1a3835a49e12e19d792f6dd344ccc76a985ca5a6ca"
 
 [[package]]
+name = "test-plugin"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "renovatio",
+]
+
+[[package]]
 name = "thiserror"
 version = "2.0.20"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -955,6 +1021,17 @@ name = "unicode-ident"
 version = "1.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
+
+[[package]]
+name = "uupd"
+version = "0.1.0"
+dependencies = [
+ "flume",
+ "libadwaita",
+ "renovatio",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "version-compare"

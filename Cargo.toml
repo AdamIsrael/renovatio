@@ -20,3 +20,19 @@ shellexpand = "3.1.1"
 serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 flume = "0.11.1"
+
+# The app and every plugin share one Cargo.lock and target/, so they're always
+# built with the same dependency versions (types like flume::Sender cross the
+# plugin boundary). Plain `cargo build` at the root still builds only the app;
+# use `--workspace` (or `-p <plugin>`) for plugins.
+[workspace]
+members = [
+    "plugins/bootc",
+    "plugins/brew",
+    "plugins/distrobox",
+    "plugins/flatpak",
+    "plugins/rpm-ostree",
+    "plugins/rustup",
+    "plugins/test-plugin",
+    "plugins/uupd",
+]

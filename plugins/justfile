@@ -4,17 +4,18 @@ default:
     @just --list
 
 
+# The plugins are members of the root Cargo workspace; builds land in ../target.
 build-debug:
-    cargo build
+    cargo build --workspace
 
 build-release:
-    cargo build --release
+    cargo build --workspace --release
 
 install-debug:
     #!/bin/bash
     set -eu
     # libtest_plugin.so is development-only; see install-test-plugin
-    plugins=$(find target/debug -maxdepth 1 -name '*.so' ! -name 'libtest_plugin.so')
+    plugins=$(find ../target/debug -maxdepth 1 -name '*.so' ! -name 'libtest_plugin.so')
     mkdir -p ~/.local/lib/{{ name }}/plugins/
     for plugin in $plugins; do
         echo "Installing $plugin to ~/.local/lib/{{ name }}/plugins/"
@@ -25,7 +26,7 @@ install-release:
     #!/bin/bash
     set -eu
     # libtest_plugin.so is development-only; see install-test-plugin
-    plugins=$(find target/release -maxdepth 1 -name '*.so' ! -name 'libtest_plugin.so')
+    plugins=$(find ../target/release -maxdepth 1 -name '*.so' ! -name 'libtest_plugin.so')
     mkdir -p ~/.local/lib/{{ name }}/plugins/
     for plugin in $plugins; do
         echo "Installing $plugin to ~/.local/lib/{{ name }}/plugins/"
@@ -36,7 +37,7 @@ install-release:
 # (build first with build-release, e.g. inside the devcontainer)
 install-test-plugin:
     mkdir -p ~/.local/lib/{{ name }}/plugins/
-    cp target/release/libtest_plugin.so ~/.local/lib/{{ name }}/plugins/
+    cp ../target/release/libtest_plugin.so ~/.local/lib/{{ name }}/plugins/
 
 # Remove the test plugin (disable it in Preferences first, or it shows as a failed plugin)
 uninstall-test-plugin:
