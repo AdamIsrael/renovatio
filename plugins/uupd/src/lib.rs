@@ -50,8 +50,7 @@ impl Plugin for Uupd {
     }
 
     fn version(&self) -> &str {
-        // TODO: implement versioning
-        "0.1.0"
+        env!("CARGO_PKG_VERSION")
     }
 
     /// uupd updates the OS, flatpaks, brew and distroboxes itself.

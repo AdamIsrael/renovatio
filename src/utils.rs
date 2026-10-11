@@ -1,4 +1,3 @@
-use inline_xml::xml;
 use std::process::{Command, Stdio};
 
 static PLUGIN_DIRS: &[&str] = &[
@@ -58,48 +57,57 @@ fn find_plugins_in(dirs: &[String]) -> Vec<String> {
     plugins
 }
 
-/// Installs our GSettings schema, if they're not already installed.
+const SCHEMA_FILE: &str = "com.github.AdamIsrael.Renovatio.gschema.xml";
+
+/// The schema, as installed by Meson (`data/`). Embedded so a plain
+/// `cargo run` works too.
+const SCHEMA: &str = include_str!("../data/com.github.AdamIsrael.Renovatio.gschema.xml");
+
+/// Make sure GSettings can find our schema, and that a copy in
+/// `~/.local/share/glib-2.0/schemas` matches this build.
+///
+/// Packaged installs get the schema from Meson. Otherwise (e.g. `cargo run`)
+/// it's written to the user's data dir and compiled. A user copy left by an
+/// older build is replaced, so new keys reach existing installs: it takes
+/// precedence over a system-wide copy, so it must not go stale.
+///
+/// Must run before anything uses GSettings, which caches the schemas it finds.
 pub fn install_gsettings_schema() {
-    let xml = xml! {
-        <schemalist>
-            <schema id="com.github.AdamIsrael.Renovatio" path="/com/github/AdamIsrael/Renovatio/">
-            <key name="auto-reboot" type="b">
-                <default>false</default>
-                <summary>A flag to enable automatic reboot after update</summary>
-            </key>
+    let dir = glib::user_data_dir().join("glib-2.0").join("schemas");
+    let path = dir.join(SCHEMA_FILE);
+    let user_copy = std::fs::read_to_string(&path).ok();
+    let installed_elsewhere = glib::system_data_dirs().iter().any(|data_dir| {
+        data_dir
+            .join("glib-2.0/schemas")
+            .join(SCHEMA_FILE)
+            .is_file()
+    });
 
-            <key name="plugins" type="as">
-              <default>{"[]"}</default>
-              <summary></summary>
-              <description></description>
-            </key>
+    if !needs_user_schema(user_copy.as_deref(), installed_elsewhere) {
+        return;
+    }
 
-            </schema>
-        </schemalist>
-    };
+    println!("Installing schema to {}...", dir.display());
+    if let Err(error) = std::fs::create_dir_all(&dir).and_then(|()| std::fs::write(&path, SCHEMA)) {
+        eprintln!("Failed to install schema {}: {error}", path.display());
+        return;
+    }
+    match Command::new("glib-compile-schemas").arg(&dir).output() {
+        Ok(output) if output.status.success() => {}
+        Ok(output) => eprintln!(
+            "glib-compile-schemas failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ),
+        Err(error) => eprintln!("Failed to run glib-compile-schemas: {error}"),
+    }
+}
 
-    // write the xml to ~/.local/share/glib-2.0/schemas
-    let glib_schemas_dir = format!(
-        "{}/.local/share/glib-2.0/schemas",
-        std::env::var("HOME").unwrap()
-    );
-    std::fs::create_dir_all(&glib_schemas_dir).unwrap();
-
-    let xml_path = format!(
-        "{}/{}",
-        glib_schemas_dir, "com.github.AdamIsrael.Renovatio.gschema.xml"
-    );
-
-    if !std::fs::exists(&xml_path).unwrap_or(false) {
-        println!("Installing schema...");
-        std::fs::write(&xml_path, xml.to_string()).unwrap();
-
-        // glib-compile-schemas
-        println!("Compiling schema...");
-        let _ = std::process::Command::new("glib-compile-schemas")
-            .arg(&glib_schemas_dir)
-            .output()
-            .unwrap();
+/// Whether the user copy of the schema must be (re)written: it's missing and
+/// no system-wide copy exists, or it differs from this build's schema.
+fn needs_user_schema(user_copy: Option<&str>, installed_elsewhere: bool) -> bool {
+    match user_copy {
+        Some(content) => content != SCHEMA,
+        None => !installed_elsewhere,
     }
 }
 
@@ -137,6 +145,17 @@ mod tests {
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(&dir).unwrap();
         dir
+    }
+
+    #[test]
+    fn user_schema_is_written_only_when_missing_everywhere_or_stale() {
+        assert!(needs_user_schema(None, false));
+        assert!(!needs_user_schema(None, true));
+        assert!(!needs_user_schema(Some(SCHEMA), false));
+        assert!(!needs_user_schema(Some(SCHEMA), true));
+        // An older build's copy shadows a system-wide one, so replace it either way.
+        assert!(needs_user_schema(Some("<schemalist/>"), false));
+        assert!(needs_user_schema(Some("<schemalist/>"), true));
     }
 
     #[test]

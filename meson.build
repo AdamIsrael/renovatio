@@ -11,6 +11,11 @@ gnome = import('gnome')
 
 subdir('src')
 
+install_data(
+  'data/com.github.AdamIsrael.Renovatio.gschema.xml',
+  install_dir: get_option('datadir') / 'glib-2.0' / 'schemas',
+)
+
 gnome.post_install(
   glib_compile_schemas: true,
   gtk_update_icon_cache: true,

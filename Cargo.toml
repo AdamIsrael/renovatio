@@ -12,7 +12,6 @@ gio = { version = "0.21.2", features = ["v2_84"] }
 adw = { version = "0.8.0", package = "libadwaita", features = ["v1_7"] }
 gtk = { version = "0.10.1", package = "gtk4", features = ["v4_18"] }
 glib = "0.21.3"
-inline-xml = "0.3.2"
 
 libloading = "0.8.9"
 shellexpand = "3.1.1"
