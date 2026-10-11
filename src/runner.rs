@@ -2,6 +2,7 @@
 //!
 //! Completion is signalled explicitly by `RunEvent::Finished` once a plugin's
 //! `update()` returns, rather than being inferred from `PluginProgress::progress`.
+use std::ffi::{CStr, c_char};
 use std::path::Path;
 use std::thread;
 
@@ -9,6 +10,7 @@ use libloading::{Library, Symbol};
 use renovatio::{Plugin, PluginProgress};
 
 type PluginType = unsafe fn() -> *mut dyn Plugin;
+type AbiType = unsafe extern "C" fn() -> *const c_char;
 
 /// Events sent from the update worker thread to the UI.
 #[derive(Debug)]
@@ -53,9 +55,19 @@ impl LoadedPlugin {
 }
 
 /// Load a plugin from a shared library exporting `create_plugin`.
+///
+/// The plugin's `renovatio_abi` fingerprint is checked first, and nothing else
+/// in the library is called unless it matches the host's.
 pub fn load_plugin(path: &str) -> Result<LoadedPlugin, String> {
     unsafe {
         let library = Library::new(path).map_err(|e| format!("Failed to load {path}: {e}"))?;
+
+        let plugin_abi = library
+            .get::<AbiType>(b"renovatio_abi\0")
+            .ok()
+            .map(|renovatio_abi| CStr::from_ptr(renovatio_abi()));
+        check_abi(path, plugin_abi, renovatio::ABI_FINGERPRINT)?;
+
         let plugin = {
             let create_plugin: Symbol<PluginType> = library
                 .get(b"create_plugin\0")
@@ -66,6 +78,22 @@ pub fn load_plugin(path: &str) -> Result<LoadedPlugin, String> {
             plugin,
             _library: Some(library),
         })
+    }
+}
+
+/// Accept a plugin only if it was built with the same ABI fingerprint as the host.
+fn check_abi(path: &str, plugin: Option<&CStr>, host: &CStr) -> Result<(), String> {
+    let rebuild = "Rebuild and reinstall the plugins (cd plugins && cargo build --release && just install-release).";
+    match plugin {
+        None => Err(format!(
+            "{path} was built for an older version of renovatio. {rebuild}"
+        )),
+        Some(plugin) if plugin != host => Err(format!(
+            "{path} was built for a different renovatio or compiler ({}) than this app ({}). {rebuild}",
+            plugin.to_string_lossy(),
+            host.to_string_lossy()
+        )),
+        Some(_) => Ok(()),
     }
 }
 
@@ -312,6 +340,24 @@ mod tests {
                 total: 0
             }]
         ));
+    }
+
+    #[test]
+    fn check_abi_accepts_matching_fingerprint() {
+        assert!(check_abi("p.so", Some(c"abi 1"), c"abi 1").is_ok());
+    }
+
+    #[test]
+    fn check_abi_rejects_mismatched_fingerprint() {
+        let error = check_abi("p.so", Some(c"abi 1"), c"abi 2").unwrap_err();
+        assert!(error.contains("different renovatio or compiler (abi 1)"));
+        assert!(error.contains("(abi 2)"));
+    }
+
+    #[test]
+    fn check_abi_rejects_plugin_without_fingerprint() {
+        let error = check_abi("p.so", None, c"abi 1").unwrap_err();
+        assert!(error.contains("older version of renovatio"));
     }
 
     #[test]

@@ -1,5 +1,19 @@
+use std::ffi::CStr;
 use std::panic::{self, AssertUnwindSafe};
 use std::process::Command;
+
+/// Fingerprint of the plugin ABI this crate was built with (renovatio version,
+/// rustc version, and a hash of this file). See `build.rs`.
+///
+/// Plugins export it via [`export_plugin!`] as the C-ABI symbol `renovatio_abi`,
+/// which the host checks before calling `create_plugin`: calling into a plugin
+/// built by a different compiler or against a different interface is undefined
+/// behavior (in practice, a segfault).
+pub const ABI_FINGERPRINT: &CStr =
+    match CStr::from_bytes_with_nul(concat!(env!("RENOVATIO_ABI"), "\0").as_bytes()) {
+        Ok(fingerprint) => fingerprint,
+        Err(_) => panic!("RENOVATIO_ABI must not contain NUL bytes"),
+    };
 
 #[derive(Clone, Debug)]
 /// PluginProgress is used to communicate the progress of a plugin update
@@ -135,7 +149,8 @@ impl<P: Plugin> Plugin for PanicGuard<P> {
     }
 }
 
-/// Export `create_plugin` for a plugin, wrapped in a [`PanicGuard`].
+/// Export `create_plugin` for a plugin, wrapped in a [`PanicGuard`], and the
+/// `renovatio_abi` fingerprint the host checks before loading it.
 ///
 /// ```ignore
 /// renovatio::export_plugin!(Flatpak);
@@ -143,6 +158,13 @@ impl<P: Plugin> Plugin for PanicGuard<P> {
 #[macro_export]
 macro_rules! export_plugin {
     ($plugin:expr) => {
+        /// The ABI fingerprint this plugin was built with. Uses the C ABI so
+        /// the host can call it safely even when the Rust ABI doesn't match.
+        #[unsafe(no_mangle)]
+        pub extern "C" fn renovatio_abi() -> *const ::std::ffi::c_char {
+            $crate::ABI_FINGERPRINT.as_ptr()
+        }
+
         #[unsafe(no_mangle)]
         pub fn create_plugin() -> *mut dyn $crate::Plugin {
             ::std::boxed::Box::into_raw(::std::boxed::Box::new($crate::PanicGuard($plugin)))
