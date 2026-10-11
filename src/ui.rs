@@ -3,6 +3,9 @@ use super::config;
 use adw::prelude::*;
 use gtk::{Box, Button, CheckButton, ProgressBar};
 
+use std::cell::RefCell;
+use std::time::Duration;
+
 pub fn get_apply_check_button() -> CheckButton {
     let settings = gio::Settings::new(config::APP_ID);
     let reboot = settings.boolean("auto-reboot");
@@ -31,12 +34,53 @@ pub fn get_plugin_progress_bar() -> ProgressBar {
         .margin_bottom(3)
         .margin_start(12)
         .margin_end(12)
-        .pulse_step(0.0)
-        // .pulse_step(25.0)
+        .pulse_step(0.1)
         .show_text(true)
         .text("")
         .visible(false)
         .build()
+}
+
+/// Pulses a `ProgressBar` on a timer while active, for plugins that can't
+/// report incremental progress. The timer only exists while pulsing.
+pub struct Pulser {
+    bar: ProgressBar,
+    source: RefCell<Option<glib::SourceId>>,
+}
+
+impl Pulser {
+    pub fn new(bar: &ProgressBar) -> Self {
+        Self {
+            bar: bar.clone(),
+            source: RefCell::new(None),
+        }
+    }
+
+    /// Start pulsing, if not already.
+    pub fn start(&self) {
+        if self.source.borrow().is_some() {
+            return;
+        }
+        let bar = self.bar.clone();
+        let source = glib::timeout_add_local(Duration::from_millis(100), move || {
+            bar.pulse();
+            glib::ControlFlow::Continue
+        });
+        self.source.replace(Some(source));
+    }
+
+    /// Stop pulsing, if active.
+    pub fn stop(&self) {
+        if let Some(source) = self.source.take() {
+            source.remove();
+        }
+    }
+}
+
+impl Drop for Pulser {
+    fn drop(&mut self) {
+        self.stop();
+    }
 }
 
 pub fn get_total_progress_bar() -> ProgressBar {
