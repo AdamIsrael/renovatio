@@ -17,12 +17,12 @@ impl Plugin for RpmOstree {
         "0.1.0"
     }
 
-    /// Uupd conflicts with all other plugins
-    fn conflicts(&self, _plugin_name: &str) -> bool {
-        true
+    /// uupd and bootc also update the OS.
+    fn conflicts(&self, plugin_name: &str) -> bool {
+        matches!(plugin_name, "uupd" | "bootc")
     }
 
-    /// Run uupd
+    /// Download and install OS updates via rpm-ostree
     extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool {
         let mut pgrss = PluginProgress::new(self.name());
         pgrss.pulse = true;

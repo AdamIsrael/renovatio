@@ -17,12 +17,12 @@ impl Plugin for Distrobox {
         "0.1.0"
     }
 
-    /// Uupd conflicts with all other plugins
-    fn conflicts(&self, _plugin_name: &str) -> bool {
-        true
+    /// uupd also updates distroboxes.
+    fn conflicts(&self, plugin_name: &str) -> bool {
+        plugin_name == "uupd"
     }
 
-    /// Run uupd
+    /// Upgrade each distrobox
     extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool {
         let mut pgrss = PluginProgress::new(self.name());
 

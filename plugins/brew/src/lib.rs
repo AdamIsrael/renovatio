@@ -85,12 +85,12 @@ impl Plugin for Brew {
         "0.1.0"
     }
 
-    /// Uupd conflicts with all other plugins
+    /// uupd also updates brew.
     fn conflicts(&self, plugin_name: &str) -> bool {
         plugin_name == "uupd"
     }
 
-    /// Run uupd
+    /// Update brew, then upgrade outdated formulae and casks
     extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool {
         let mut pgrss = PluginProgress::new(self.name());
 

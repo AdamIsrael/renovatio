@@ -6,8 +6,7 @@ mod ui;
 mod utils;
 
 use flume::{Receiver, unbounded};
-use renovatio::PluginMetadata;
-use runner::RunEvent;
+use runner::{PluginEntry, RunEvent};
 
 use gtk::prelude::*;
 
@@ -22,18 +21,8 @@ fn main() -> glib::ExitCode {
         .application_id(config::APP_ID)
         .build();
 
-    // Load plugins at startup, in a Vec<PluginMetadata>
-    let mut plugins: Vec<PluginMetadata> = Vec::new();
-    for plugin_path in utils::find_plugins() {
-        match runner::load_plugin(&plugin_path) {
-            Ok(loaded) => {
-                let mut metadata = PluginMetadata::new(loaded.plugin);
-                metadata.path = Some(plugin_path);
-                plugins.push(metadata);
-            }
-            Err(error) => eprintln!("{error}"),
-        }
-    }
+    // Load plugins at startup for their metadata and conflicts (shown in Preferences)
+    let plugins = runner::discover(&utils::find_plugins(), runner::load_plugin);
 
     application.connect_activate(move |app| {
         let window = build_ui(app, plugins.clone());
@@ -54,7 +43,7 @@ fn main() -> glib::ExitCode {
     application.run()
 }
 
-fn build_ui(app: &adw::Application, plugins: Vec<PluginMetadata>) -> adw::ApplicationWindow {
+fn build_ui(app: &adw::Application, plugins: Vec<PluginEntry>) -> adw::ApplicationWindow {
     // Create a channel that will be used to send messages from worker threads
     let (tx, rx): (flume::Sender<RunEvent>, Receiver<RunEvent>) = unbounded();
 
