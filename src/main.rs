@@ -165,35 +165,44 @@ fn build_ui(app: &adw::Application, plugins: Vec<PluginMetadata>) -> adw::Applic
                     tpbar_clone.set_fraction(index as f64 / total as f64);
                 }
                 RunEvent::RunFinished { succeeded, total } => {
-                    apply_clone.set_sensitive(true);
-                    update_clone.set_sensitive(true);
                     tpbar_clone.set_fraction(1.0);
 
                     if total == 0 {
                         tpbar_clone.set_text(Some("No plugins enabled. See Preferences."));
+                        apply_clone.set_sensitive(true);
+                        update_clone.set_sensitive(true);
                         continue;
                     }
 
-                    // Check to see if we need to reboot
-                    let reboot = apply_clone.is_active();
                     let failed = total - succeeded;
+                    let summary = if failed > 0 {
+                        format!("Updates complete ({failed} of {total} failed)!")
+                    } else {
+                        "Updates complete!".to_string()
+                    };
 
-                    let msg = format!(
-                        "Updates complete{}! {}",
-                        if failed > 0 {
-                            format!(" ({failed} of {total} failed)")
-                        } else {
-                            String::new()
-                        },
-                        if reboot { "Rebooting..." } else { "" }
-                    );
+                    // Check to see if we need to reboot. rpm-ostree can be slow,
+                    // so run it off the main thread.
+                    let reboot = apply_clone.is_active()
+                        && gio::spawn_blocking(utils::check_reboot_needed)
+                            .await
+                            .unwrap_or(false);
 
-                    tpbar_clone.set_text(Some(&msg));
-
-                    if reboot && utils::check_reboot_needed() {
-                        std::thread::sleep(std::time::Duration::from_secs(3));
-                        utils::reboot_system();
+                    if reboot {
+                        // Leave the controls disabled: an update started now
+                        // would be cut short by the reboot.
+                        tpbar_clone.set_text(Some(&format!("{summary} Rebooting...")));
+                        glib::timeout_future_seconds(3).await;
+                        if utils::reboot_system() {
+                            continue;
+                        }
+                        tpbar_clone.set_text(Some(&format!("{summary} Reboot failed.")));
+                    } else {
+                        tpbar_clone.set_text(Some(&summary));
                     }
+
+                    apply_clone.set_sensitive(true);
+                    update_clone.set_sensitive(true);
                 }
             }
         }
