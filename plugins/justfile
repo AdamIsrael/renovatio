@@ -13,7 +13,8 @@ build-release:
 install-debug:
     #!/bin/bash
     set -eu
-    plugins=$(find target/debug -maxdepth 1 -name '*.so')
+    # libtest_plugin.so is development-only; see install-test-plugin
+    plugins=$(find target/debug -maxdepth 1 -name '*.so' ! -name 'libtest_plugin.so')
     mkdir -p ~/.local/lib/{{ name }}/plugins/
     for plugin in $plugins; do
         echo "Installing $plugin to ~/.local/lib/{{ name }}/plugins/"
@@ -23,9 +24,20 @@ install-debug:
 install-release:
     #!/bin/bash
     set -eu
-    plugins=$(find target/release -maxdepth 1 -name '*.so')
+    # libtest_plugin.so is development-only; see install-test-plugin
+    plugins=$(find target/release -maxdepth 1 -name '*.so' ! -name 'libtest_plugin.so')
     mkdir -p ~/.local/lib/{{ name }}/plugins/
     for plugin in $plugins; do
         echo "Installing $plugin to ~/.local/lib/{{ name }}/plugins/"
         cp $plugin ~/.local/lib/{{ name }}/plugins/
     done
+
+# Install the development-only test plugin (mode via RENOVATIO_TEST_PLUGIN=fail|panic|slow|succeed)
+# (build first with build-release, e.g. inside the devcontainer)
+install-test-plugin:
+    mkdir -p ~/.local/lib/{{ name }}/plugins/
+    cp target/release/libtest_plugin.so ~/.local/lib/{{ name }}/plugins/
+
+# Remove the test plugin (disable it in Preferences first, or it shows as a failed plugin)
+uninstall-test-plugin:
+    rm -f ~/.local/lib/{{ name }}/plugins/libtest_plugin.so

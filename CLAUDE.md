@@ -28,8 +28,9 @@ cargo fmt --all -- --check      # CI enforces this
 
 # Plugins (from plugins/)
 cargo build --release           # or: just build-release
-just install-release            # copies target/release/*.so to ~/.local/lib/renovatio/plugins/
+just install-release            # copies target/release/*.so (except the test plugin) to ~/.local/lib/renovatio/plugins/
 cargo build -p flatpak          # build a single plugin
+just install-test-plugin        # dev-only plugin; RENOVATIO_TEST_PLUGIN=fail|panic|slow|succeed (see plugins/README.md)
 ```
 
 CI (`.github/workflows/ci.yaml`) builds the root `Dockerfile` and runs `cargo check`, `cargo test`, `cargo clippy` inside it, plus `cargo fmt --check`. CI only covers the root crate, not `plugins/`.
