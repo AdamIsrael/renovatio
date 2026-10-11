@@ -6,3 +6,4 @@
 .beads-credential-key
 .beads/proxieddb/
 *.gate.lock*
+*.log
