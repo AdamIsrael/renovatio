@@ -1,4 +1,5 @@
 use std::ffi::CStr;
+use std::os::unix::process::ExitStatusExt;
 use std::panic::{self, AssertUnwindSafe};
 use std::process::Command;
 
@@ -172,29 +173,35 @@ macro_rules! export_plugin {
     };
 }
 
-/// Execute a command and return it's stdout, stderr, and success/failure
+/// Run `command` with `sh -c` and return its stdout, stderr, and exit code.
+///
+/// Both streams are always returned, whatever the outcome. The exit code is 0
+/// only on success: a process killed by a signal reports `128 + signal` (the
+/// shell convention), and a command that can't be started reports 1 with the
+/// reason in stderr.
 pub fn execute(command: &str) -> (String, String, i32) {
-    let mut stdout = String::new();
-    let mut stderr = String::new();
-    let mut rc = 1; // default to non-zero
-
-    let cmd = Command::new("sh").args(["-c", command]).output();
-
-    match cmd {
+    match Command::new("sh").args(["-c", command]).output() {
         Ok(output) => {
-            rc = output.status.code().unwrap_or(0);
-            if output.status.success() {
-                stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            } else {
-                stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            }
+            let rc = output
+                .status
+                .code()
+                .or_else(|| output.status.signal().map(|signal| 128 + signal))
+                .unwrap_or(1);
+            (
+                String::from_utf8_lossy(&output.stdout).into_owned(),
+                String::from_utf8_lossy(&output.stderr).into_owned(),
+                rc,
+            )
         }
         Err(error) => {
             eprintln!("Error executing command: {}", error);
+            (
+                String::new(),
+                format!("Failed to run {command}: {error}"),
+                1,
+            )
         }
     }
-
-    (stdout, stderr, rc)
 }
 
 #[cfg(test)]
@@ -219,6 +226,30 @@ mod tests {
         extern "Rust" fn update(&self, _tx: flume::Sender<PluginProgress>) -> bool {
             panic!("boom");
         }
+    }
+
+    #[test]
+    fn execute_returns_both_streams_on_success() {
+        let (stdout, stderr, rc) = execute("echo out; echo err >&2");
+        assert_eq!(
+            (stdout.as_str(), stderr.as_str(), rc),
+            ("out\n", "err\n", 0)
+        );
+    }
+
+    #[test]
+    fn execute_returns_both_streams_and_exit_code_on_failure() {
+        let (stdout, stderr, rc) = execute("echo out; echo err >&2; exit 3");
+        assert_eq!(
+            (stdout.as_str(), stderr.as_str(), rc),
+            ("out\n", "err\n", 3)
+        );
+    }
+
+    #[test]
+    fn execute_reports_signal_kill_as_failure() {
+        let (_, _, rc) = execute("kill -KILL $$");
+        assert_eq!(rc, 128 + 9);
     }
 
     #[test]
