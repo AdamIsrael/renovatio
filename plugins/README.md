@@ -9,4 +9,5 @@
 - [x] flatpak
   - [x] implement everything
 - [x] rpm-tree
+- [x] rustup (disabled by default; runs `rustup update` as the user)
 - [x] uupd
