@@ -19,10 +19,7 @@ name = "bootc"
 version = "0.1.0"
 dependencies = [
  "flume",
- "libadwaita",
  "renovatio",
- "serde",
- "serde_json",
 ]
 
 [[package]]

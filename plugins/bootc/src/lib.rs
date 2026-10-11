@@ -1,165 +1,9 @@
 use renovatio::{Plugin, PluginProgress, execute};
 
-use serde::{Deserialize, Serialize};
-use serde_json::Value;
+/// `rpm-ostree status --pending-exit-77` exits with this when a deployment is staged.
+const PENDING_DEPLOYMENT: i32 = 77;
 
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Root {
-    pub api_version: String,
-    pub kind: String,
-    pub metadata: Metadata,
-    pub spec: Spec,
-    pub status: Status,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Metadata {
-    pub name: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Spec {
-    pub boot_order: String,
-    pub image: Image,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Image {
-    pub image: String,
-    pub signature: String,
-    pub transport: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Status {
-    pub booted: Booted,
-    pub rollback: Rollback,
-    pub rollback_queued: bool,
-    pub staged: Option<Staged>,
-    #[serde(rename = "type")]
-    pub type_field: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Booted {
-    pub cached_update: Option<CachedUpdate>,
-    pub image: Image3,
-    pub incompatible: bool,
-    pub ostree: Ostree,
-    pub pinned: bool,
-    pub soft_reboot_capable: bool,
-    pub store: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CachedUpdate {
-    pub architecture: String,
-    pub image: Image2,
-    pub image_digest: String,
-    pub timestamp: String,
-    pub version: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Image2 {
-    pub image: String,
-    pub signature: String,
-    pub transport: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Image3 {
-    pub architecture: String,
-    pub image: Image4,
-    pub image_digest: String,
-    pub timestamp: String,
-    pub version: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Image4 {
-    pub image: String,
-    pub signature: String,
-    pub transport: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Ostree {
-    pub checksum: String,
-    pub deploy_serial: i64,
-    pub stateroot: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Rollback {
-    pub cached_update: Value,
-    pub image: Value,
-    pub incompatible: bool,
-    pub ostree: Ostree2,
-    pub pinned: bool,
-    pub soft_reboot_capable: bool,
-    pub store: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Ostree2 {
-    pub checksum: String,
-    pub deploy_serial: i64,
-    pub stateroot: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Staged {
-    pub cached_update: Value,
-    pub image: Image5,
-    pub incompatible: bool,
-    pub ostree: Ostree3,
-    pub pinned: bool,
-    pub soft_reboot_capable: bool,
-    pub store: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Image5 {
-    pub architecture: String,
-    pub image: Image6,
-    pub image_digest: String,
-    pub timestamp: String,
-    pub version: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Image6 {
-    pub image: String,
-    pub signature: String,
-    pub transport: String,
-}
-
-#[derive(Default, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Ostree3 {
-    pub checksum: String,
-    pub deploy_serial: i64,
-    pub stateroot: String,
-}
-
-// Implementation of uupd
+// Implementation of bootc
 pub struct Bootc;
 
 impl Plugin for Bootc {
@@ -181,80 +25,147 @@ impl Plugin for Bootc {
         true
     }
 
-    /// Run uupd
+    /// Run `bootc upgrade`, then check whether a reboot is needed to apply it.
     extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool {
         let mut pgrss = PluginProgress::new(self.name());
-        pgrss.progress = 0;
         pgrss.pulse = true;
-        pgrss.status = "Checking for updates...".to_string();
+        pgrss.status = "Checking for and downloading OS updates...".to_string();
         let _ = tx.send(pgrss.clone());
 
-        // Check the status to see if there's an update available
-        if let Some(status) = get_status() {
-            // Check to see if there's an update
-            if status.status.booted.cached_update.is_some() {
-                // There is an update cached, so we need to reboot
+        // bootc needs root for both `status` and `upgrade`, so only run the
+        // upgrade with pkexec (one password prompt). Whether a deployment is
+        // staged can be checked without root via rpm-ostree.
+        let upgrade = execute("pkexec bootc upgrade");
+        let pending = (upgrade.2 == 0).then(|| execute("rpm-ostree status --pending-exit-77").2);
 
-                let new_version = status.status.booted.cached_update.unwrap().version;
+        let outcome = outcome(&upgrade.0, &upgrade.1, upgrade.2, pending);
 
-                // There's a cached update, so a) update the progress and b) run the upgrade
-                pgrss.status = format!("OS upgrade to {} pending reboot", new_version);
-                pgrss.progress = 100;
-                pgrss.pulse = false;
-                pgrss.reboot_required = true;
-
-                let _ = tx.send(pgrss.clone());
-            } else {
-                // There's a cached update, so a) update the progress and b) run the upgrade
-                pgrss.status = "Checking for updates...".to_string();
-                let _ = tx.send(pgrss.clone());
-
-                let (stdout, stderr, rc) = upgrade();
-                if rc == 0 {
-                    pgrss.stdout = Some(stdout.clone());
-                } else {
-                    pgrss.stderr = Some(stderr.clone());
-                }
-
-                // When the upgrade is complete, signal that we're done.
-                pgrss.progress = 100;
-                pgrss.pulse = false;
-
-                if stdout.contains("No changes in") {
-                    pgrss.status = "No updates available".to_string();
-                } else {
-                    pgrss.reboot_required = true;
-                    pgrss.status = "OS upgrade pending reboot".to_string();
-                }
-
-                let _ = tx.send(pgrss.clone());
-            }
-        } else {
-            println!("No status available");
+        pgrss.pulse = false;
+        pgrss.status = outcome.status;
+        pgrss.reboot_required = outcome.reboot_required;
+        pgrss.stdout = (!upgrade.0.trim().is_empty()).then_some(upgrade.0);
+        pgrss.stderr = (!upgrade.1.trim().is_empty()).then_some(upgrade.1);
+        if outcome.success {
+            pgrss.progress = 100;
         }
+        let _ = tx.send(pgrss);
 
-        true
+        outcome.success
     }
 }
 
 // Export a function to create an instance of the plugin
 renovatio::export_plugin!(Bootc);
 
-fn get_status() -> Option<Root> {
-    // execute `bootc status --json`
-    let (stdout, _stderr, rc) = execute("pkexec bootc status --json");
-
-    if rc != 0 {
-        return None;
-    }
-
-    // deserialize the json to a Root structure
-    let root: Root = serde_json::from_str(&stdout).expect("Failed to deserialize JSON");
-
-    Some(root)
+#[derive(Debug, PartialEq)]
+struct Outcome {
+    success: bool,
+    reboot_required: bool,
+    status: String,
 }
 
-/// Run the `bootc upgrade` command
-fn upgrade() -> (String, String, i32) {
-    execute("pkexec bootc upgrade")
+/// Decide the result of an update from `bootc upgrade`'s output and exit code
+/// and, if the upgrade succeeded, the exit code of `rpm-ostree status --pending-exit-77`.
+fn outcome(stdout: &str, stderr: &str, upgrade_rc: i32, pending_rc: Option<i32>) -> Outcome {
+    if upgrade_rc != 0 {
+        let status = match upgrade_rc {
+            // pkexec: the authorization dialog was dismissed, or authorization failed
+            126 | 127 => "OS update cancelled: authorization was not granted".to_string(),
+            _ => match last_line(stderr) {
+                Some(error) => format!("OS update failed: {error}"),
+                None => format!("OS update failed (exit code {upgrade_rc})"),
+            },
+        };
+        return Outcome {
+            success: false,
+            reboot_required: false,
+            status,
+        };
+    }
+
+    // Prefer rpm-ostree's answer; if it isn't usable, fall back to bootc's
+    // "No changes in ..." message for "nothing new was staged".
+    let staged = match pending_rc {
+        Some(PENDING_DEPLOYMENT) => true,
+        Some(0) => false,
+        _ => !stdout.contains("No changes in"),
+    };
+
+    Outcome {
+        success: true,
+        reboot_required: staged,
+        status: if staged {
+            "OS update staged; reboot to apply it".to_string()
+        } else {
+            "OS is up to date".to_string()
+        },
+    }
+}
+
+fn last_line(text: &str) -> Option<&str> {
+    text.lines().map(str::trim).rfind(|line| !line.is_empty())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn staged_update_requires_reboot() {
+        let outcome = outcome("Queued for next boot: ...\n", "", 0, Some(77));
+        assert!(outcome.success);
+        assert!(outcome.reboot_required);
+        assert_eq!(outcome.status, "OS update staged; reboot to apply it");
+    }
+
+    #[test]
+    fn no_pending_deployment_is_up_to_date() {
+        let outcome = outcome("No changes in: ghcr.io/example/os:latest\n", "", 0, Some(0));
+        assert!(outcome.success);
+        assert!(!outcome.reboot_required);
+        assert_eq!(outcome.status, "OS is up to date");
+    }
+
+    #[test]
+    fn falls_back_to_bootc_output_without_rpm_ostree() {
+        // e.g. rpm-ostree not installed: sh reports 127
+        assert!(!outcome("No changes in: img\n", "", 0, Some(127)).reboot_required);
+        assert!(outcome("Queued for next boot: img\n", "", 0, Some(127)).reboot_required);
+    }
+
+    #[test]
+    fn failed_upgrade_is_a_failure_not_a_pending_reboot() {
+        let outcome = outcome(
+            "",
+            "Fetching image\nerror: Upgrading: Pulling: connection refused\n",
+            1,
+            None,
+        );
+        assert!(!outcome.success);
+        assert!(!outcome.reboot_required);
+        assert_eq!(
+            outcome.status,
+            "OS update failed: error: Upgrading: Pulling: connection refused"
+        );
+    }
+
+    #[test]
+    fn cancelled_authorization_is_reported() {
+        for rc in [126, 127] {
+            let outcome = outcome("", "", rc, None);
+            assert!(!outcome.success);
+            assert_eq!(
+                outcome.status,
+                "OS update cancelled: authorization was not granted"
+            );
+        }
+    }
+
+    #[test]
+    fn failure_without_stderr_reports_exit_code() {
+        assert_eq!(
+            outcome("", "\n", 2, None).status,
+            "OS update failed (exit code 2)"
+        );
+    }
 }
