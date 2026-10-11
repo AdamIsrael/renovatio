@@ -1,0 +1,12 @@
+[package]
+name = "test-plugin"
+version = "0.1.0"
+edition = "2024"
+description = "Development-only plugin that fails on demand, for testing renovatio's UI. Not installed by just install-release."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+renovatio = { path = "../.." }
+flume = "0.11.1"
