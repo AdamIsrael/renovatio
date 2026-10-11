@@ -20,9 +20,9 @@ impl Plugin for Bootc {
         "0.1.0"
     }
 
-    /// Uupd conflicts with all other plugins
-    fn conflicts(&self, _plugin_name: &str) -> bool {
-        true
+    /// uupd and rpm-ostree also update the OS.
+    fn conflicts(&self, plugin_name: &str) -> bool {
+        matches!(plugin_name, "uupd" | "rpm-ostree")
     }
 
     /// Run `bootc upgrade`, then check whether a reboot is needed to apply it.

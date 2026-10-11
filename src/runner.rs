@@ -7,7 +7,7 @@ use std::path::Path;
 use std::thread;
 
 use libloading::{Library, Symbol};
-use renovatio::{Plugin, PluginProgress};
+use renovatio::{Plugin, PluginMetadata, PluginProgress};
 
 type PluginType = unsafe fn() -> *mut dyn Plugin;
 type AbiType = unsafe extern "C" fn() -> *const c_char;
@@ -84,6 +84,62 @@ pub fn load_plugin(path: &str) -> Result<LoadedPlugin, String> {
             _library: Some(library),
         })
     }
+}
+
+/// A discovered plugin, with the other discovered plugins it conflicts with.
+#[derive(Clone, Debug)]
+pub struct PluginEntry {
+    pub metadata: PluginMetadata,
+    /// `(path, name)` of plugins that shouldn't be enabled at the same time
+    /// as this one, e.g. uupd and flatpak, since uupd also updates flatpaks.
+    pub conflicts: Vec<(String, String)>,
+}
+
+/// Load each plugin in `paths` for its metadata and work out which of them
+/// conflict. A pair conflicts if either plugin says so. Plugins that fail to
+/// load are logged and left out.
+pub fn discover<L>(paths: &[String], load: L) -> Vec<PluginEntry>
+where
+    L: Fn(&str) -> Result<LoadedPlugin, String>,
+{
+    let loaded: Vec<(String, LoadedPlugin)> = paths
+        .iter()
+        .filter_map(|path| match load(path) {
+            Ok(loaded) => Some((path.clone(), loaded)),
+            Err(error) => {
+                eprintln!("{error}");
+                None
+            }
+        })
+        .collect();
+
+    let conflicts: Vec<Vec<(String, String)>> = loaded
+        .iter()
+        .map(|(path, a)| {
+            loaded
+                .iter()
+                .filter(|(other, b)| {
+                    other != path
+                        && (a.plugin.conflicts(b.plugin.name())
+                            || b.plugin.conflicts(a.plugin.name()))
+                })
+                .map(|(other, b)| (other.clone(), b.plugin.name().to_string()))
+                .collect()
+        })
+        .collect();
+
+    loaded
+        .into_iter()
+        .zip(conflicts)
+        .map(|((path, loaded), conflicts)| {
+            let mut metadata = PluginMetadata::new(loaded.plugin);
+            metadata.path = Some(path);
+            PluginEntry {
+                metadata,
+                conflicts,
+            }
+        })
+        .collect()
 }
 
 /// Accept a plugin only if it was built with the same ABI fingerprint as the host.
@@ -209,6 +265,7 @@ mod tests {
         steps: Vec<u32>,
         result: bool,
         reboot: bool,
+        conflicts_with: Vec<&'static str>,
     }
 
     impl Plugin for Fake {
@@ -221,8 +278,8 @@ mod tests {
         fn version(&self) -> &str {
             "0.0.0"
         }
-        fn conflicts(&self, _plugin_name: &str) -> bool {
-            false
+        fn conflicts(&self, plugin_name: &str) -> bool {
+            self.conflicts_with.contains(&plugin_name)
         }
         extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool {
             for step in &self.steps {
@@ -241,6 +298,7 @@ mod tests {
             steps: steps.to_vec(),
             result,
             reboot: false,
+            conflicts_with: Vec::new(),
         }
     }
 
@@ -363,6 +421,63 @@ mod tests {
                 reboot_required: false
             }]
         ));
+    }
+
+    fn discover_fakes(plugins: Vec<Fake>) -> Vec<PluginEntry> {
+        let paths: Vec<String> = plugins
+            .iter()
+            .map(|p| format!("/p/lib{}.so", p.name))
+            .collect();
+        let plugins = std::cell::RefCell::new(plugins.into_iter());
+        discover(&paths, |_| {
+            Ok(LoadedPlugin::from_plugin(Box::new(
+                plugins.borrow_mut().next().unwrap(),
+            )))
+        })
+    }
+
+    fn conflict_names(entry: &PluginEntry) -> Vec<&str> {
+        entry
+            .conflicts
+            .iter()
+            .map(|(_, name)| name.as_str())
+            .collect()
+    }
+
+    #[test]
+    fn discover_finds_conflicts_in_both_directions() {
+        // Only uupd declares the conflict; flatpak must still see it.
+        let entries = discover_fakes(vec![
+            Fake {
+                conflicts_with: vec!["flatpak"],
+                ..fake("uupd", &[], true)
+            },
+            fake("flatpak", &[], true),
+            fake("rustup", &[], true),
+        ]);
+
+        assert_eq!(conflict_names(&entries[0]), vec!["flatpak"]);
+        assert_eq!(conflict_names(&entries[1]), vec!["uupd"]);
+        assert!(entries[2].conflicts.is_empty());
+        assert_eq!(entries[1].conflicts[0].0, "/p/libuupd.so");
+        assert_eq!(
+            entries[1].metadata.path.as_deref(),
+            Some("/p/libflatpak.so")
+        );
+    }
+
+    #[test]
+    fn discover_skips_plugins_that_fail_to_load() {
+        let paths = vec!["/p/libgone.so".to_string(), "/p/libok.so".to_string()];
+        let entries = discover(&paths, |path| {
+            if path.contains("gone") {
+                Err("Failed to load".to_string())
+            } else {
+                Ok(LoadedPlugin::from_plugin(Box::new(fake("ok", &[], true))))
+            }
+        });
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].metadata.name, "ok");
     }
 
     #[test]

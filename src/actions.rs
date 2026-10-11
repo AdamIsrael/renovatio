@@ -1,5 +1,5 @@
-use super::PluginMetadata;
 use crate::modals;
+use crate::runner::PluginEntry;
 
 use adw::prelude::*;
 use gio::ActionEntry;
@@ -21,7 +21,7 @@ pub fn set_about(app: &adw::Application, window: &adw::ApplicationWindow) {
 pub fn set_preferences(
     app: &adw::Application,
     window: &adw::ApplicationWindow,
-    plugins: Vec<PluginMetadata>,
+    plugins: Vec<PluginEntry>,
 ) {
     app.add_action_entries([ActionEntry::builder("preferences")
         .activate(glib::clone!(

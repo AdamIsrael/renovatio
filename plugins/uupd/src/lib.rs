@@ -54,9 +54,12 @@ impl Plugin for Uupd {
         "0.1.0"
     }
 
-    /// Uupd conflicts with all other plugins
-    fn conflicts(&self, _plugin_name: &str) -> bool {
-        true
+    /// uupd updates the OS, flatpaks, brew and distroboxes itself.
+    fn conflicts(&self, plugin_name: &str) -> bool {
+        matches!(
+            plugin_name,
+            "bootc" | "rpm-ostree" | "flatpak" | "brew" | "distrobox"
+        )
     }
 
     /// Run uupd

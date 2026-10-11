@@ -53,7 +53,9 @@ The host loads this via `libloading` (`runner::load_plugin`) and reclaims it wit
 
 **UI.** Widgets are built imperatively in `src/ui.rs` (no Blueprint/`.ui` files, no gresources despite the `glib-build-tools` build-dependency); app menu actions (about/preferences/quit) are wired in `src/actions.rs`; dialogs live in `src/modals/`.
 
-**Notes.** `Plugin::conflicts()` is declared and implemented by plugins but not yet consulted by the host. stdout/stderr from plugins is currently only printed to the console (displaying it in a `TextView` is a TODO).
+**Conflicts.** `Plugin::conflicts(name)` says which plugins update the same things (e.g. uupd also updates the OS, flatpak, brew and distrobox). At startup `runner::discover` loads the installed plugins and pairs up conflicts in both directions (either side declaring it is enough) into `PluginEntry::conflicts`. Enabling a plugin in Preferences switches off any enabled plugin it conflicts with and shows a toast. The runner doesn't check conflicts, so settings saved before this existed may still list both.
+
+**Notes.** stdout/stderr from plugins is currently only printed to the console (displaying it in a `TextView` is a TODO).
 
 
 <!-- BEGIN BEADS INTEGRATION v:1 profile:minimal hash:1105d646 -->

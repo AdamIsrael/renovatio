@@ -17,12 +17,12 @@ impl Plugin for Flatpak {
         "0.1.0"
     }
 
-    /// Uupd conflicts with all other plugins
-    fn conflicts(&self, _plugin_name: &str) -> bool {
-        true
+    /// uupd also updates flatpaks.
+    fn conflicts(&self, plugin_name: &str) -> bool {
+        plugin_name == "uupd"
     }
 
-    /// Run uupd
+    /// Upgrade user and system flatpaks
     extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool {
         let mut pgrss = PluginProgress::new(self.name());
 
