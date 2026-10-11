@@ -8,7 +8,7 @@ Renovatio is a prototype GTK4/libadwaita (Rust, edition 2024) desktop app that r
 
 ## Commands
 
-The repo contains **two separate Cargo workspaces**: the app at the root and the plugins under `plugins/` (its own `Cargo.toml`, `Cargo.lock`, and `target/`). Run plugin commands from inside `plugins/`.
+The repo is **one Cargo workspace**: the root package is the app (and the `renovatio` lib), and every `plugins/<name>/` crate is a member, sharing one `Cargo.lock` and `target/` so dependency versions can't drift across the plugin boundary. Plain `cargo build`/`cargo test` at the root covers only the app; add `--workspace` (or `-p <plugin>`) for plugins. Plugin `.so` files land in `target/<profile>/`; the install recipes live in `plugins/justfile`.
 
 Building requires GTK4 + libadwaita dev libraries (`libgtk-4-dev libadwaita-1-dev`), which are **not** available on the host. The host is read-only outside select mounts (e.g. `/tmp`, `/var/home`), so don't try to install them there. All cargo commands run inside the devpod workspace (devcontainer spec, `.devcontainer/`), where the repo is mounted at `/workspaces/renovatio`:
 
@@ -19,21 +19,19 @@ devpod ssh renovatio --workdir /workspaces/renovatio --command "cargo clippy"
 ```
 
 ```bash
-# App
-cargo build [--release]
-cargo run
-cargo test                      # single test: cargo test <name>
-cargo clippy
-cargo fmt --all -- --check      # CI enforces this
+cargo build --workspace [--release]   # app + all plugins
+cargo run                             # the app
+cargo test --workspace                # single test: cargo test -p <crate> <name>
+cargo clippy --workspace --all-targets -- -D warnings   # CI enforces this
+cargo fmt --all -- --check            # CI enforces this
+cargo build -p flatpak                # a single plugin
 
-# Plugins (from plugins/)
-cargo build --release           # or: just build-release
-just install-release            # copies target/release/*.so (except the test plugin) to ~/.local/lib/renovatio/plugins/
-cargo build -p flatpak          # build a single plugin
+# Installing plugins (from plugins/)
+just install-release            # copies ../target/release/*.so (except the test plugin) to ~/.local/lib/renovatio/plugins/
 just install-test-plugin        # dev-only plugin; RENOVATIO_TEST_PLUGIN=fail|panic|slow|succeed (see plugins/README.md)
 ```
 
-CI (`.github/workflows/ci.yaml`) builds the root `Dockerfile` and runs `cargo check`, `cargo test`, `cargo clippy` inside it, plus `cargo fmt --check`. CI only covers the root crate, not `plugins/`.
+CI (`.github/workflows/ci.yaml`) builds the root `Dockerfile` (GTK/libadwaita dev libs) and runs `cargo check --workspace --all-targets`, `cargo test --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings` inside it, plus `cargo fmt --all -- --check`. It covers the app and every plugin, and any clippy warning fails the build.
 
 A Meson build (`meson.build`, `src/meson.build`, root `justfile`: `just setup-meson`, `just build`) wraps `cargo build` for eventual packaging; plain cargo is the normal dev loop.
 

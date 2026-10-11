@@ -17,7 +17,7 @@
 `test-plugin` misbehaves on demand so you can exercise the UI's failure paths. It is not installed by `just install-release`.
 
 ```bash
-cargo build --release            # inside the devcontainer
+cargo build --workspace --release   # inside the devcontainer
 just install-test-plugin         # then enable "test-plugin" in Preferences
 RENOVATIO_TEST_PLUGIN=panic ../target/release/renovatio
 just uninstall-test-plugin       # disable it in Preferences first

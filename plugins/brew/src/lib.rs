@@ -126,10 +126,8 @@ impl Plugin for Brew {
         let total_progress = outdated.formulae.len() + outdated.casks.len();
 
         println!("total_progress: {}", total_progress);
-        if total_progress > 0 {
-            // Figure out how much each step should progress, minus the first two hard-coded steps
-            let step_progress = 100 / total_progress;
-
+        // Figure out how much each step should progress, minus the first two hard-coded steps
+        if let Some(step_progress) = 100usize.checked_div(total_progress) {
             // Upgrade each formulae
             for formulae in outdated.formulae {
                 pgrss.status = format!("Upgrading formulae {}...", formulae.name);

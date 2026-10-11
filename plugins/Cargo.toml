@@ -1,3 +1,0 @@
-[workspace]
-resolver = "3"
-members = [ "bootc", "brew", "distrobox", "flatpak", "rpm-ostree", "rustup", "test-plugin", "uupd"]
