@@ -1,4 +1,4 @@
-use renovatio::{Plugin, PluginProgress, execute};
+use renovatio::{Plugin, PluginProgress, execute_args};
 
 // Implementation of distrobox
 pub struct Distrobox;
@@ -73,7 +73,7 @@ impl Plugin for Distrobox {
 renovatio::export_plugin!(Distrobox);
 
 pub fn list() -> Vec<String> {
-    let (stdout, _stderr, success) = execute("distrobox list --no-color");
+    let (stdout, _stderr, success) = execute_args("distrobox", &["list", "--no-color"]);
     if success != 0 {
         return Vec::new();
     }
@@ -98,7 +98,7 @@ fn parse_list(output: &str) -> Vec<String> {
 }
 
 pub fn upgrade(name: &str) -> (String, String, i32) {
-    execute(format!("distrobox upgrade {}", name).as_str())
+    execute_args("distrobox", &["upgrade", name])
 }
 
 #[cfg(test)]

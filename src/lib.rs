@@ -179,8 +179,27 @@ macro_rules! export_plugin {
 /// only on success: a process killed by a signal reports `128 + signal` (the
 /// shell convention), and a command that can't be started reports 1 with the
 /// reason in stderr.
+///
+/// Prefer [`execute_args`] whenever the command includes a value such as a
+/// package or container name: the shell would interpret quotes, spaces and
+/// `;` in it.
 pub fn execute(command: &str) -> (String, String, i32) {
-    match Command::new("sh").args(["-c", command]).output() {
+    run(Command::new("sh").args(["-c", command]), command)
+}
+
+/// Run `program` with `args` directly, without a shell, and return its
+/// stdout, stderr, and exit code, with the same conventions as [`execute`].
+/// Arguments are passed through as-is, so no quoting is needed.
+pub fn execute_args(program: &str, args: &[&str]) -> (String, String, i32) {
+    let display = std::iter::once(program)
+        .chain(args.iter().copied())
+        .collect::<Vec<_>>()
+        .join(" ");
+    run(Command::new(program).args(args), &display)
+}
+
+fn run(command: &mut Command, display: &str) -> (String, String, i32) {
+    match command.output() {
         Ok(output) => {
             let rc = output
                 .status
@@ -197,7 +216,7 @@ pub fn execute(command: &str) -> (String, String, i32) {
             eprintln!("Error executing command: {}", error);
             (
                 String::new(),
-                format!("Failed to run {command}: {error}"),
+                format!("Failed to run {display}: {error}"),
                 1,
             )
         }
@@ -244,6 +263,29 @@ mod tests {
             (stdout.as_str(), stderr.as_str(), rc),
             ("out\n", "err\n", 3)
         );
+    }
+
+    #[test]
+    fn execute_args_passes_arguments_without_a_shell() {
+        // A shell would expand $HOME, split on the space and run `echo pwned`.
+        let (stdout, _, rc) = execute_args("printf", &["%s|", "a b", "$HOME; echo pwned"]);
+        assert_eq!((stdout.as_str(), rc), ("a b|$HOME; echo pwned|", 0));
+    }
+
+    #[test]
+    fn execute_args_returns_both_streams_and_exit_code() {
+        let (stdout, stderr, rc) = execute_args("sh", &["-c", "echo out; echo err >&2; exit 4"]);
+        assert_eq!(
+            (stdout.as_str(), stderr.as_str(), rc),
+            ("out\n", "err\n", 4)
+        );
+    }
+
+    #[test]
+    fn execute_args_reports_missing_program() {
+        let (_, stderr, rc) = execute_args("renovatio-no-such-program", &["--flag"]);
+        assert_eq!(rc, 1);
+        assert!(stderr.starts_with("Failed to run renovatio-no-such-program --flag: "));
     }
 
     #[test]

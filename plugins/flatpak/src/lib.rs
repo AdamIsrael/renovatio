@@ -1,4 +1,4 @@
-use renovatio::{Plugin, PluginProgress, execute};
+use renovatio::{Plugin, PluginProgress, execute_args};
 
 pub struct Flatpak;
 // Implementation of flatpak
@@ -95,8 +95,10 @@ fn list_updates(system: bool) -> Vec<String> {
     if !system {
         flag = "--user";
     }
-    let (stdout, _stderr, success) =
-        execute(format!("flatpak remote-ls --updates --columns=application {}", flag).as_str());
+    let (stdout, _stderr, success) = execute_args(
+        "flatpak",
+        &["remote-ls", "--updates", "--columns=application", flag],
+    );
     if success != 0 {
         return updates;
     }
@@ -109,5 +111,5 @@ fn list_updates(system: bool) -> Vec<String> {
 }
 
 fn upgrade_flatpak(name: &str) -> (String, String, i32) {
-    execute(format!("flatpak update --noninteractive -y {}", name).as_str())
+    execute_args("flatpak", &["update", "--noninteractive", "-y", name])
 }

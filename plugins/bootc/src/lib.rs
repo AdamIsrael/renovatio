@@ -1,4 +1,4 @@
-use renovatio::{Plugin, PluginProgress, execute};
+use renovatio::{Plugin, PluginProgress, execute_args};
 
 /// `rpm-ostree status --pending-exit-77` exits with this when a deployment is staged.
 const PENDING_DEPLOYMENT: i32 = 77;
@@ -35,8 +35,9 @@ impl Plugin for Bootc {
         // bootc needs root for both `status` and `upgrade`, so only run the
         // upgrade with pkexec (one password prompt). Whether a deployment is
         // staged can be checked without root via rpm-ostree.
-        let upgrade = execute("pkexec bootc upgrade");
-        let pending = (upgrade.2 == 0).then(|| execute("rpm-ostree status --pending-exit-77").2);
+        let upgrade = execute_args("pkexec", &["bootc", "upgrade"]);
+        let pending = (upgrade.2 == 0)
+            .then(|| execute_args("rpm-ostree", &["status", "--pending-exit-77"]).2);
 
         let outcome = outcome(&upgrade.0, &upgrade.1, upgrade.2, pending);
 
