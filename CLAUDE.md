@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Overview
 
-Renovatio is a prototype GTK4/libadwaita (Rust, edition 2024) desktop app that runs system updates (OS via bootc/rpm-ostree/uupd, flatpak, brew, distrobox) through dynamically loaded plugins and shows per-plugin and overall progress bars.
+Renovatio is a prototype GTK4/libadwaita (Rust, edition 2024) desktop app that runs system updates (OS via bootc/rpm-ostree/uupd, flatpak, brew, distrobox, Rust toolchains via rustup) through dynamically loaded plugins and shows per-plugin and overall progress bars.
 
 ## Commands
 
