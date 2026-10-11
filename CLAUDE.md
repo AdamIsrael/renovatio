@@ -31,7 +31,7 @@ just install-release            # copies ../target/release/*.so (except the test
 just install-test-plugin        # dev-only plugin; RENOVATIO_TEST_PLUGIN=fail|panic|slow|succeed (see plugins/README.md)
 ```
 
-CI (`.github/workflows/ci.yaml`) builds the root `Dockerfile` and runs `cargo check`, `cargo test`, `cargo clippy` inside it, plus `cargo fmt --check`. CI only covers the root crate, not `plugins/`.
+CI (`.github/workflows/ci.yaml`) builds the root `Dockerfile` (GTK/libadwaita dev libs) and runs `cargo check --workspace --all-targets`, `cargo test --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings` inside it, plus `cargo fmt --all -- --check`. It covers the app and every plugin, and any clippy warning fails the build.
 
 A Meson build (`meson.build`, `src/meson.build`, root `justfile`: `just setup-meson`, `just build`) wraps `cargo build` for eventual packaging; plain cargo is the normal dev loop.
 

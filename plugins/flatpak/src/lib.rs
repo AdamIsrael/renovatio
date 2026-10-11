@@ -34,10 +34,7 @@ impl Plugin for Flatpak {
         let total_progress = system.len() + user.len();
 
         // Figure out how much each step should progress
-        let mut step_progress = 100;
-        if total_progress > 0 {
-            step_progress = 100 / total_progress;
-        }
+        let step_progress = 100usize.checked_div(total_progress).unwrap_or(100);
 
         let mut pgrss_clone = pgrss.clone();
         let mut upgrade = |flatpak: &str, installation: &str| {

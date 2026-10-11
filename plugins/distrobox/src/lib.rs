@@ -33,10 +33,7 @@ impl Plugin for Distrobox {
         let total_progress = distroboxes.len();
 
         // Figure out how much each step should progress
-        let mut step_progress = 100;
-        if total_progress > 0 {
-            step_progress = 100 / total_progress;
-        }
+        let step_progress = 100usize.checked_div(total_progress).unwrap_or(100);
 
         for distrobox in distroboxes {
             pgrss.status = format!("Upgrading distrobox {}...", distrobox);

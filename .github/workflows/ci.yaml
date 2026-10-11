@@ -1,3 +1,5 @@
+name: Continuous integration
+
 on:
     push:
         branches:
@@ -6,103 +8,40 @@ on:
             - "**/README.md"
     pull_request:
 
-name: Continuous integration
-
 jobs:
     check:
-        name: Check
+        name: Check, test and lint
         runs-on: ubuntu-latest
+        env:
+            # Reuse build output and the cargo registry across the steps below,
+            # so the workspace is only compiled once per job.
+            RUN: >-
+                docker run --rm
+                -v renovatio-target:/app/target
+                -v renovatio-registry:/usr/local/cargo/registry
+                renovatio-ci
         steps:
-            - uses: actions/checkout@v2
-            - name: Build Docker image
-              run: docker build -t ublue-updater .
+            - uses: actions/checkout@v7
 
-            - name: Run check
-              run: docker run ublue-updater cargo check
+            # The image provides the GTK4 and libadwaita development libraries.
+            - name: Build image
+              run: docker build -t renovatio-ci .
 
-            - name: Run Test
-              run: docker run ublue-updater cargo test
+            - name: Check
+              run: $RUN cargo check --workspace --all-targets
 
-            - name: Run Clippy
-              run: docker run ublue-updater cargo clippy
+            - name: Test
+              run: $RUN cargo test --workspace
 
-            # - name: Install GTK4 dependencies
-            #   run: |
-            #       sudo apt-get update
-            #       sudo apt-get install -y libgtk-4-dev
-            #       cargo check
-
-            # - name: Set PKG_CONFIG_PATH (if needed)
-            #   run: |
-            #       echo "PKG_CONFIG_PATH=/usr/lib/x86_64-linux-gnu/pkgconfig" >> $GITHUB_ENV
-            # - name: Check
-            #   run: |
-            #       pkg-config --libs --cflags glib-2.0
-            #       KG_CONFIG_ALLOW_SYSTEM_CFLAGS=1 pkg-config --libs --cflags glib-2.0
-            #       cargo check
-
-            # - name: Run tests
-            #   run: cargo test --verbose
-
-            # - uses: actions-rs/toolchain@v1
-            #   with:
-            #       profile: minimal
-            #       toolchain: stable
-            #       override: true
-            # - uses: actions-rs/cargo@v1
-            #   with:
-            #       command: check
-
-    # test:
-    #     name: Test Suite
-    #     runs-on: ubuntu-latest
-    #     steps:
-    #         - name: Install gtk libraries
-    #           run: |
-    #               sudo apt-get update
-    #               sudo apt-get install -y libgtk-4-dev libgtk-4-dev libglib2.0-dev librust-gio-sys-dev build-essential libadwaita-1-dev
-    #         - uses: actions/checkout@v2
-    #         - uses: actions-rs/toolchain@v1
-    #           with:
-    #               profile: minimal
-    #               toolchain: stable
-    #               override: true
-    #         - uses: actions-rs/cargo@v1
-    #           with:
-    #               command: test
+            - name: Clippy
+              run: $RUN cargo clippy --workspace --all-targets -- -D warnings
 
     fmt:
         name: Rustfmt
         runs-on: ubuntu-latest
         steps:
-            - uses: actions/checkout@v2
-            - uses: actions-rs/toolchain@v1
+            - uses: actions/checkout@v7
+            - uses: dtolnay/rust-toolchain@stable
               with:
-                  profile: minimal
-                  toolchain: stable
-                  override: true
-            - run: rustup component add rustfmt
-            - uses: actions-rs/cargo@v1
-              with:
-                  command: fmt
-                  args: --all -- --check
-
-    # clippy:
-    #     name: Clippy
-    #     runs-on: ubuntu-latest
-    #     steps:
-    #         - name: Install gtk libraries
-    #           run: |
-    #               sudo apt-get update
-    #               sudo apt-get install -y libgtk-4-dev libgtk-4-dev build-essential libadwaita-1-dev
-    #         - uses: actions/checkout@v2
-    #         - uses: actions-rs/toolchain@v1
-    #           with:
-    #               profile: minimal
-    #               toolchain: stable
-    #               override: true
-    #         - run: rustup component add clippy
-    #         - uses: actions-rs/cargo@v1
-    #           with:
-    #               command: clippy
-    #               args: -- -D warnings
+                  components: rustfmt
+            - run: cargo fmt --all -- --check
