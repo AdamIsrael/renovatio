@@ -2,8 +2,11 @@
 //!
 //! Completion is signalled explicitly by `RunEvent::Finished` once a plugin's
 //! `update()` returns, rather than being inferred from `PluginProgress::progress`.
+use std::collections::HashMap;
 use std::ffi::{CStr, c_char};
+use std::fmt;
 use std::path::Path;
+use std::sync::Arc;
 use std::thread;
 
 use libloading::{Library, Symbol};
@@ -49,6 +52,14 @@ pub struct LoadedPlugin {
     _library: Option<Library>,
 }
 
+impl fmt::Debug for LoadedPlugin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LoadedPlugin")
+            .field("name", &self.plugin.name())
+            .finish_non_exhaustive()
+    }
+}
+
 impl LoadedPlugin {
     #[cfg(test)]
     pub fn from_plugin(plugin: Box<dyn Plugin>) -> Self {
@@ -90,13 +101,14 @@ pub fn load_plugin(path: &str) -> Result<LoadedPlugin, String> {
 #[derive(Clone, Debug)]
 pub struct PluginEntry {
     pub metadata: PluginMetadata,
+    /// The plugin itself, kept loaded for the life of the app.
+    pub plugin: Arc<LoadedPlugin>,
     /// `(path, name)` of plugins that shouldn't be enabled at the same time
     /// as this one, e.g. uupd and flatpak, since uupd also updates flatpaks.
     pub conflicts: Vec<(String, String)>,
 }
 
-/// Load each plugin in `paths` for its metadata and work out which of them
-/// conflict. A pair conflicts if either plugin says so. Plugins that fail to
+/// Load each plugin in `paths` and work out which of them conflict. A pair conflicts if either plugin says so. Plugins that fail to
 /// load are logged and left out.
 pub fn discover<L>(paths: &[String], load: L) -> Vec<PluginEntry>
 where
@@ -132,14 +144,45 @@ where
         .into_iter()
         .zip(conflicts)
         .map(|((path, loaded), conflicts)| {
-            let mut metadata = PluginMetadata::new(loaded.plugin);
+            let mut metadata = PluginMetadata::new(loaded.plugin.as_ref());
             metadata.path = Some(path);
             PluginEntry {
                 metadata,
+                plugin: Arc::new(loaded),
                 conflicts,
             }
         })
         .collect()
+}
+
+/// The plugins loaded at startup, by path, so runs reuse them instead of
+/// loading each library again.
+#[derive(Clone, Default)]
+pub struct Plugins(Arc<HashMap<String, Arc<LoadedPlugin>>>);
+
+impl Plugins {
+    pub fn new(entries: &[PluginEntry]) -> Self {
+        let plugins = entries
+            .iter()
+            .filter_map(|entry| {
+                let path = entry.metadata.path.clone()?;
+                Some((path, Arc::clone(&entry.plugin)))
+            })
+            .collect();
+        Self(Arc::new(plugins))
+    }
+
+    /// The plugin at `path`, loaded with `load` if it wasn't found at startup
+    /// (e.g. it's enabled in the settings but was installed since).
+    pub fn get<L>(&self, path: &str, load: L) -> Result<Arc<LoadedPlugin>, String>
+    where
+        L: Fn(&str) -> Result<LoadedPlugin, String>,
+    {
+        match self.0.get(path) {
+            Some(plugin) => Ok(Arc::clone(plugin)),
+            None => load(path).map(Arc::new),
+        }
+    }
 }
 
 /// Accept a plugin only if it was built with the same ABI fingerprint as the host.
@@ -164,7 +207,7 @@ fn check_abi(path: &str, plugin: Option<&CStr>, host: &CStr) -> Result<(), Strin
 /// a single `RunFinished`.
 pub fn run<L>(paths: &[String], load: L, tx: &flume::Sender<RunEvent>)
 where
-    L: Fn(&str) -> Result<LoadedPlugin, String>,
+    L: Fn(&str) -> Result<Arc<LoadedPlugin>, String>,
 {
     let total = paths.len();
     let mut succeeded = 0;
@@ -310,7 +353,7 @@ mod tests {
             &paths,
             |path| {
                 make(path)
-                    .map(|p| LoadedPlugin::from_plugin(Box::new(p)))
+                    .map(|p| Arc::new(LoadedPlugin::from_plugin(Box::new(p))))
                     .ok_or_else(|| format!("Failed to load {path}"))
             },
             &tx,
@@ -478,6 +521,30 @@ mod tests {
         });
         assert_eq!(entries.len(), 1);
         assert_eq!(entries[0].metadata.name, "ok");
+    }
+
+    #[test]
+    fn plugins_reuses_discovered_plugins_and_loads_others() {
+        let entries = discover_fakes(vec![fake("flatpak", &[], true)]);
+        let plugins = Plugins::new(&entries);
+
+        let found = plugins
+            .get("/p/libflatpak.so", |_| panic!("already loaded"))
+            .unwrap();
+        assert!(Arc::ptr_eq(&found, &entries[0].plugin));
+
+        let new = plugins
+            .get("/p/libbrew.so", |_| {
+                Ok(LoadedPlugin::from_plugin(Box::new(fake("brew", &[], true))))
+            })
+            .unwrap();
+        assert_eq!(new.plugin.name(), "brew");
+
+        assert!(
+            plugins
+                .get("/p/libgone.so", |_| Err("gone".into()))
+                .is_err()
+        );
     }
 
     #[test]
