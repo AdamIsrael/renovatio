@@ -18,9 +18,21 @@ Each plugin's progress is shown in the upper bar, and the overall run in the low
 
 In Preferences, switch plugins on or off and drag them into the order they should run in. Plugins that update the same things (e.g. uupd and flatpak) can't be enabled together.
 
+## Installing
+
+Download the latest `renovatio-vX.Y.Z-x86_64-linux.tar.gz` and `SHA256SUMS` from [Releases](https://github.com/AdamIsrael/renovatio/releases), then:
+
+```bash
+sha256sum -c SHA256SUMS
+tar -xzf renovatio-vX.Y.Z-x86_64-linux.tar.gz -C ~/.local
+~/.local/bin/renovatio
+```
+
+Then enable plugins in Preferences. Requires x86_64 Linux with glibc 2.39+, GTK 4.18+ and libadwaita 1.7+ (e.g. Fedora 42 or later). The plugins only work with the app from the same release, so replace them all when upgrading.
+
 ## Building
 
-Until the packaging is complete, you'll have to build the application from source.
+To build from source instead:
 
 ### Prerequisites
 
