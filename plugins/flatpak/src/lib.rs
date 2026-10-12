@@ -25,9 +25,16 @@ impl Plugin for Flatpak {
     extern "Rust" fn update(&self, tx: flume::Sender<PluginProgress>) -> bool {
         let mut pgrss = PluginProgress::new(self.name());
 
-        // Find the system flatpaks needing update
-        let system = list_updates(true);
-        let user = list_updates(false);
+        // Find the system and user flatpaks needing update
+        let (system, user) = match (list_updates(true), list_updates(false)) {
+            (Ok(system), Ok(user)) => (system, user),
+            (Err(error), _) | (_, Err(error)) => {
+                pgrss.status = "Failed to list flatpak updates".to_string();
+                pgrss.stderr = Some(error);
+                let _ = tx.send(pgrss);
+                return false;
+            }
+        };
 
         // calculate the total progress based on the number of outdated flatpaks
         let total_progress = system.len() + user.len();
@@ -88,27 +95,58 @@ impl Plugin for Flatpak {
 // Export a function to create an instance of the plugin
 renovatio::export_plugin!(Flatpak);
 
-fn list_updates(system: bool) -> Vec<String> {
-    let mut updates = Vec::new();
-    let mut flag = "--system";
-    if !system {
-        flag = "--user";
-    }
-    let (stdout, _stderr, success) = execute_args(
+/// The applications with updates in the system or user installation.
+fn list_updates(system: bool) -> Result<Vec<String>, String> {
+    let flag = if system { "--system" } else { "--user" };
+    let (stdout, stderr, rc) = execute_args(
         "flatpak",
         &["remote-ls", "--updates", "--columns=application", flag],
     );
-    if success != 0 {
-        return updates;
+    if rc != 0 {
+        return Err(stderr);
     }
+    Ok(parse_updates(&stdout))
+}
 
-    for line in stdout.lines().skip(1) {
-        updates.push(line.to_string());
-    }
-
-    updates
+/// Parse `flatpak remote-ls --updates --columns=application`: one application
+/// ID per line. flatpak only prints its "Application ID" header to a terminal,
+/// but skip it if it's there.
+fn parse_updates(stdout: &str) -> Vec<String> {
+    stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && *line != "Application ID")
+        .map(str::to_string)
+        .collect()
 }
 
 fn upgrade_flatpak(name: &str) -> (String, String, i32) {
     execute_args("flatpak", &["update", "--noninteractive", "-y", name])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_updates_keeps_every_line_of_piped_output() {
+        // Captured from `flatpak remote-ls --updates --columns=application | cat`:
+        // no header, so the first line is an update too.
+        let stdout = "org.mozilla.firefox\ncom.github.tchx84.Flatseal\n";
+        assert_eq!(
+            parse_updates(stdout),
+            vec!["org.mozilla.firefox", "com.github.tchx84.Flatseal"]
+        );
+    }
+
+    #[test]
+    fn parse_updates_skips_header_and_blank_lines() {
+        let stdout = "Application ID\norg.gnome.Calculator\n\n  \n";
+        assert_eq!(parse_updates(stdout), vec!["org.gnome.Calculator"]);
+    }
+
+    #[test]
+    fn parse_updates_of_nothing_is_empty() {
+        assert!(parse_updates("").is_empty());
+    }
 }
