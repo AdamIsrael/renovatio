@@ -20,6 +20,11 @@ serde = { version = "1.0.228", features = ["derive"] }
 serde_json = "1.0.145"
 flume = "0.11.1"
 
+# Tray icon. Only the ksni (StatusNotifierItem over D-Bus) backend: the default
+# libappindicator backend pulls in GTK3, which can't share a process with GTK4.
+tray-icon = { version = "0.26", default-features = false, features = ["ksni"] }
+png = "0.18"
+
 # The app and every plugin share one Cargo.lock and target/, so they're always
 # built with the same dependency versions (types like flume::Sender cross the
 # plugin boundary). Plain `cargo build` at the root still builds only the app;

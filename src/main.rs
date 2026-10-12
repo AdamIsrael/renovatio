@@ -2,6 +2,7 @@ mod actions;
 mod config;
 mod modals;
 mod runner;
+mod tray;
 mod ui;
 mod utils;
 
@@ -10,6 +11,7 @@ use runner::{PluginEntry, RunEvent};
 
 use gtk::prelude::*;
 
+use std::cell::RefCell;
 use std::thread;
 
 fn main() -> glib::ExitCode {
@@ -25,13 +27,27 @@ fn main() -> glib::ExitCode {
     // Preferences, and every run reuses them.
     let plugins = runner::discover(&utils::find_plugins(), runner::load_plugin);
 
+    // The tray icon lives as long as the app; dropping it removes the icon.
+    let tray = RefCell::new(None);
+
     application.connect_activate(move |app| {
+        // Launching the app again (or reopening it from the tray) shows the
+        // existing window, even if it was hidden, rather than adding another.
+        if let Some(window) = app.active_window() {
+            window.present();
+            return;
+        }
+
         let window = build_ui(app, plugins.clone());
+        tray.replace(tray::install(app, &window));
 
         // Connect to the "close-request" signal
         window.connect_close_request(move |window| {
-            // If the window closes, quit the application even if there are active sender channels
-            window.application().unwrap().quit();
+            // With a tray icon, closing only hides the window (see `tray::install`).
+            // Otherwise, quit the application even if there are active sender channels.
+            if !window.hides_on_close() {
+                window.application().unwrap().quit();
+            }
 
             // Return `glib::Propagation::Stop` to prevent the default handler
             // from closing the window, or `glib::Propagation::Proceed` to allow it.
