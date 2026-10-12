@@ -33,6 +33,8 @@ just install-test-plugin        # dev-only plugin; RENOVATIO_TEST_PLUGIN=fail|pa
 
 CI (`.github/workflows/ci.yaml`) builds the root `Dockerfile` (GTK/libadwaita dev libs) and runs `cargo check --workspace --all-targets`, `cargo test --workspace`, and `cargo clippy --workspace --all-targets -- -D warnings` inside it, plus `cargo fmt --all -- --check`. It covers the app and every plugin, and any clippy warning fails the build.
 
+Releases (`.github/workflows/release.yaml`): pushing a `vX.Y.Z` tag builds the app and plugins together in the same image and runs `scripts/package-release.sh`, which fails unless the tag matches the `Cargo.toml` version (part of the ABI fingerprint) and writes `dist/renovatio-vX.Y.Z-x86_64-linux.tar.gz` (laid out as `bin/`, `lib/renovatio/plugins/`, `share/doc/renovatio/`, to extract into `~/.local` or `/usr/local`; no test plugin) plus `SHA256SUMS`. The workflow attaches both to a new GitHub release, whose notes come from `.github/release-notes.md` plus generated notes. The `Dockerfile` is pinned to Debian 13 (trixie), which sets the release's minimum glibc/GTK/libadwaita; update the notes if you change it.
+
 A Meson build (`meson.build`, `src/meson.build`, root `justfile`: `just setup-meson`, `just build`) wraps `cargo build` for eventual packaging; plain cargo is the normal dev loop.
 
 ## Architecture

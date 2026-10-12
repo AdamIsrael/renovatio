@@ -1,0 +1,43 @@
+name: Release
+
+on:
+    push:
+        tags:
+            - "v*.*.*"
+
+jobs:
+    release:
+        name: Build and publish release
+        runs-on: ubuntu-latest
+        permissions:
+            contents: write
+        env:
+            TAG: ${{ github.ref_name }}
+        steps:
+            - uses: actions/checkout@v7
+
+            # The version is part of the plugin ABI fingerprint.
+            - name: Check tag matches Cargo.toml version
+              run: scripts/package-release.sh --check "$TAG"
+
+            # Same image as CI, with the GTK4 and libadwaita development
+            # libraries. The app and every plugin are built together from this
+            # commit, so their ABI fingerprints match.
+            - name: Build image
+              run: docker build -t renovatio-ci .
+
+            - name: Build and package
+              run: >-
+                docker run --rm -e TAG
+                -v "$PWD/dist:/app/dist"
+                renovatio-ci
+                bash -c 'cargo build --workspace --release && scripts/package-release.sh "$TAG"'
+
+            - name: Create release
+              env:
+                  GH_TOKEN: ${{ github.token }}
+              run: |
+                  sed "s/TAG/$TAG/g" .github/release-notes.md > notes.md
+                  gh release create "$TAG" --verify-tag --title "$TAG" \
+                      --notes-file notes.md --generate-notes \
+                      dist/renovatio-"$TAG"-x86_64-linux.tar.gz dist/SHA256SUMS
