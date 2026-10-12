@@ -21,7 +21,11 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Deserialize, Serialize, Debug)]
 pub struct Formulae {
     pub name: String,
+
+    #[serde(default)]
     pub installed_versions: Vec<String>,
+
+    #[serde(default)]
     pub current_version: String,
 
     #[serde(default)]
@@ -119,7 +123,15 @@ impl Plugin for Brew {
             let _ = tx.send(pgrss.clone());
             return false;
         }
-        let outdated: Outdated = serde_json::from_str(&stdout).unwrap();
+        let outdated = match parse_outdated(&stdout) {
+            Ok(outdated) => outdated,
+            Err(error) => {
+                pgrss.status = "Failed to read outdated brew packages".to_string();
+                pgrss.stderr = Some(error);
+                let _ = tx.send(pgrss.clone());
+                return false;
+            }
+        };
 
         // calculate the total progress based on the number of outdated formulae and casks
         let total_progress = outdated.formulae.len() + outdated.casks.len();
@@ -189,6 +201,12 @@ impl Plugin for Brew {
 // Export a function to create an instance of the plugin
 renovatio::export_plugin!(Brew);
 
+/// Parse `brew outdated --json` (the v2 format: `formulae` and `casks`).
+fn parse_outdated(stdout: &str) -> Result<Outdated, String> {
+    serde_json::from_str(stdout)
+        .map_err(|error| format!("Unexpected brew outdated output: {error}"))
+}
+
 fn get_outdated() -> (String, String, i32) {
     execute_args("brew", &["outdated", "--json"])
 }
@@ -206,4 +224,56 @@ fn upgrade_formulae(formula: &str) -> (String, String, i32) {
 fn upgrade_cask(cask: &str) -> (String, String, i32) {
     // run a `brew upgrade --cask <formula> --dry-run`
     execute_args("brew", &["upgrade", "--cask", cask])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_outdated_reads_formulae_and_casks() {
+        let stdout = r#"{
+          "formulae": [
+            {
+              "name": "k9s",
+              "installed_versions": ["0.50.15"],
+              "current_version": "0.50.16",
+              "pinned": false,
+              "pinned_version": null
+            }
+          ],
+          "casks": [
+            {
+              "name": "font-fira-code",
+              "installed_versions": ["6.2"],
+              "current_version": "6.3"
+            }
+          ]
+        }"#;
+        let outdated = parse_outdated(stdout).unwrap();
+
+        assert_eq!(outdated.formulae.len(), 1);
+        assert_eq!(outdated.formulae[0].name, "k9s");
+        assert_eq!(outdated.formulae[0].installed_versions, vec!["0.50.15"]);
+        assert_eq!(outdated.formulae[0].current_version, "0.50.16");
+
+        // Casks have no pinned fields.
+        assert_eq!(outdated.casks.len(), 1);
+        assert_eq!(outdated.casks[0].name, "font-fira-code");
+        assert!(!outdated.casks[0].pinned);
+    }
+
+    #[test]
+    fn parse_outdated_with_nothing_outdated() {
+        // Captured from `brew outdated --json` with everything up to date.
+        let outdated = parse_outdated("{\n  \"formulae\": [],\n  \"casks\": []\n}\n").unwrap();
+        assert!(outdated.formulae.is_empty() && outdated.casks.is_empty());
+    }
+
+    #[test]
+    fn parse_outdated_rejects_unexpected_output() {
+        // e.g. the v1 format (a bare array), or a warning instead of JSON
+        assert!(parse_outdated("[]").is_err());
+        assert!(parse_outdated("Warning: something went wrong").is_err());
+    }
 }
