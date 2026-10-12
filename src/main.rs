@@ -46,6 +46,8 @@ fn main() -> glib::ExitCode {
 
 fn build_ui(app: &adw::Application, plugins: Vec<PluginEntry>) -> adw::ApplicationWindow {
     // Create a channel that will be used to send messages from worker threads
+    ui::load_css();
+
     let (tx, rx): (flume::Sender<RunEvent>, Receiver<RunEvent>) = unbounded();
     let loaded = runner::Plugins::new(&plugins);
 
@@ -119,6 +121,7 @@ fn build_ui(app: &adw::Application, plugins: Vec<PluginEntry>) -> adw::Applicati
                     tpbar_clone.set_fraction((index - 1) as f64 / total as f64);
 
                     pulser.stop();
+                    ui::set_failed(&ppbar_clone, false);
                     ppbar_clone.set_fraction(0.0);
                     ppbar_clone.set_text(Some(""));
                 }
@@ -156,6 +159,8 @@ fn build_ui(app: &adw::Application, plugins: Vec<PluginEntry>) -> adw::Applicati
                     } else {
                         let error = error.unwrap_or_else(|| "Update failed".to_string());
                         println!("Update failed: {name}: {error}");
+                        // Keep the bar where the plugin stopped, but show it failed.
+                        ui::set_failed(&ppbar_clone, true);
                         ppbar_clone.set_text(Some(&format!("{name}: {error}")));
                     }
                     tpbar_clone.set_fraction(index as f64 / total as f64);

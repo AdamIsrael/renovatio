@@ -28,6 +28,35 @@ pub fn get_apply_check_button() -> CheckButton {
     cb
 }
 
+/// Style class marking a plugin's progress bar as failed.
+const FAILED: &str = "error";
+
+/// Load the app's CSS. Call once the display is available (e.g. on activate).
+pub fn load_css() {
+    let Some(display) = gtk::gdk::Display::default() else {
+        return;
+    };
+    let provider = gtk::CssProvider::new();
+    // Adwaita colors labels with `.error`, but not progress bars.
+    provider.load_from_string(
+        "progressbar.error > trough > progress { background-color: var(--error-bg-color); }",
+    );
+    gtk::style_context_add_provider_for_display(
+        &display,
+        &provider,
+        gtk::STYLE_PROVIDER_PRIORITY_APPLICATION,
+    );
+}
+
+/// Mark `bar` as failed (red, keeping how far it got), or clear that.
+pub fn set_failed(bar: &ProgressBar, failed: bool) {
+    if failed {
+        bar.add_css_class(FAILED);
+    } else {
+        bar.remove_css_class(FAILED);
+    }
+}
+
 pub fn get_plugin_progress_bar() -> ProgressBar {
     ProgressBar::builder()
         .margin_top(12)
