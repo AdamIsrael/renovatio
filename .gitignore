@@ -7,3 +7,4 @@
 .beads/proxieddb/
 *.gate.lock*
 *.log
+/dist

@@ -1,5 +1,7 @@
 # A container for building Rust/GTK applications
-FROM rust:latest AS builder
+# Pinned to Debian 13 (trixie) so release binaries keep the same minimum
+# glibc/GTK/libadwaita versions (see .github/release-notes.md).
+FROM rust:1-trixie AS builder
 WORKDIR /app
 COPY . .
 
