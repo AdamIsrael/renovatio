@@ -30,6 +30,8 @@ tar -xzf renovatio-vX.Y.Z-x86_64-linux.tar.gz -C ~/.local
 
 Then enable plugins in Preferences. Requires x86_64 Linux with glibc 2.39+, GTK 4.18+ and libadwaita 1.7+ (e.g. Fedora 42 or later). The plugins only work with the app from the same release, so replace them all when upgrading.
 
+Renovatio adds an icon to the notification area; closing the window then keeps it running there (reopen it from the icon or by launching it again). This needs a desktop that shows StatusNotifierItem icons: KDE and most others do, GNOME needs the AppIndicator extension. Without one, closing the window quits.
+
 ## Building
 
 To build from source instead:
